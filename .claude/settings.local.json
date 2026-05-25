@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python score_artwork_alignment.py)",
+      "Bash(python assign_clusters.py)"
+    ]
+  }
+}
