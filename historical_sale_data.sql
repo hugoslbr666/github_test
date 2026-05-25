@@ -5,6 +5,7 @@ a_s.artist_id
 ,a_a.categories
 ,a_a.styles
 ,a_a.medium
+,a_a.price_eur
 ,case when a_a.height_cm < a_a.width_cm then 'landscape' else 'portait' end as orientation
 from `singulart-data.connected_sheets.all_sales` a_s
 left join `singulart-data.connected_sheets.all_artworks` a_a on a_a.artwork_id = a_s.artwork_id 
