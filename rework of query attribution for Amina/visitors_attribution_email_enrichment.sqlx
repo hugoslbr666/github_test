@@ -1,0 +1,26 @@
+config {
+  type: "table",
+  database: "singulart-data",
+  name: "visitors_attribution_email_enrichment",
+  schema: "tech",
+  tags: ["tech","6h","email_enrichment"],
+  bigquery: {
+    clusterBy: ["uuid"]
+  }
+}
+
+SELECT
+  b.uuid,
+  ARRAY_AGG(DISTINCT stue.customer_id IGNORE NULLS ORDER BY stue.customer_id) AS customer_ids,
+  ARRAY_AGG(DISTINCT LOWER(stue.email) IGNORE NULLS ORDER BY LOWER(stue.email)) AS emails
+--  MAX(eoa.last_email_opened_at) AS last_email_opened_at
+FROM ${ref("visitors_attribution_base_materialized")} b
+CROSS JOIN UNNEST(b.user_ids) AS uid
+LEFT JOIN ${ref("sgt_tracking_users_emails")} stue ON stue.user_id = uid
+-- LEFT JOIN (
+--   SELECT email_addr, MAX(metric_at) AS last_email_opened_at
+--  FROM ${ref("customerio_data")}
+--  WHERE metric = 'opened'
+--  GROUP BY 1
+--) eoa ON eoa.email_addr = LOWER(stue.email)
+GROUP BY b.uuid

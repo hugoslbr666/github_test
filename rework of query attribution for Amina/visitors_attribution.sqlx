@@ -1,0 +1,18 @@
+config {
+  type: "table",
+  database: "singulart-data",
+  name: "visitors_attribution",
+  schema: "tech",
+  bigquery: {
+    clusterBy: ["bot"]
+  },
+  tags: ["main","tech","attribution","6h","customerio","post_operations"]
+}
+
+SELECT
+  b.*,
+  e.customer_ids,
+  e.emails
+  --e.last_email_opened_at
+FROM ${ref("visitors_attribution_base_materialized")} b
+LEFT JOIN ${ref("visitors_attribution_email_enrichment")} e ON e.uuid = b.uuid

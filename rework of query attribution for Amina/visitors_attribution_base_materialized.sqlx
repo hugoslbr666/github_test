@@ -1,0 +1,95 @@
+config {
+  type: "table",
+  database: "singulart-data",
+  name: "visitors_attribution_base_materialized",
+  schema: "tech",
+  tags: ["tech", "materialized"],
+  bigquery: {
+    partitionBy: "DATE(first_session_at)",
+    clusterBy: ["uuid"]
+  }
+}
+
+WITH cik_attribution AS (
+  SELECT stc.cik,
+    ARRAY_AGG(stv.country IGNORE NULLS ORDER BY vsa.first_session_at LIMIT 1)[SAFE_OFFSET(0)] AS first_country,
+    ARRAY_AGG(vsa.first_session_id ORDER BY vsa.first_session_at LIMIT 1)[SAFE_OFFSET(0)] AS first_session_id,
+    ARRAY_AGG(vsa.first_campaign_id IGNORE NULLS ORDER BY vsa.first_session_at LIMIT 1)[SAFE_OFFSET(0)] AS first_campaign_id,
+    ARRAY_AGG(vsa.first_session_at IGNORE NULLS ORDER BY vsa.first_session_at LIMIT 1)[SAFE_OFFSET(0)] AS first_session_at,
+    ARRAY_AGG(vsa.last_session_id ORDER BY vsa.last_session_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS last_session_id,
+    ARRAY_AGG(vsa.last_campaign_id IGNORE NULLS ORDER BY vsa.last_session_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS last_campaign_id,
+    ARRAY_AGG(vsa.last_session_at IGNORE NULLS ORDER BY vsa.last_session_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS last_session_at,
+    ARRAY_AGG(stv.locale IGNORE NULLS ORDER BY vsa.last_session_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS last_locale
+  FROM ${ref("sgt_tracking_visitors")} stv
+  INNER JOIN ${ref("sgt_tracking_ciks")} stc ON stc.visitor_id = stv.id
+  INNER JOIN ${ref("visitors_attribution_sessions_agg")} vsa ON vsa.visitor_id = stv.id
+  GROUP BY 1
+)
+
+SELECT
+  stc.cik AS uuid,
+  ARRAY_AGG(DISTINCT stv.id ORDER BY stv.id) AS visitor_ids,
+  ARRAY_AGG(DISTINCT stu.id IGNORE NULLS ORDER BY stu.id) AS user_ids,
+  ARRAY_AGG(DISTINCT stu.uuid IGNORE NULLS) AS uuid_ids,
+  MAX(IF(bvi.visitor_id IS NOT NULL, 1, 0)) AS bot,
+  MAX(IF(bev.visitor_id IS NOT NULL, 1, 0)) AS b2b_enrolled,
+  MAX(IF(svi.visitor_id IS NOT NULL, 1, 0)) AS singulart,
+  MAX(IF(stcb.visitor_id IS NOT NULL, 1, 0)) AS blacklisted,
+  cf.first_country,
+  cf.last_locale,
+  cf.first_session_id,
+  cf.first_campaign_id,
+  cf.first_session_at,
+  cf.last_session_id,
+  cf.last_campaign_id,
+  cf.last_session_at,
+  cfo.first_order_at,
+  cfo.last_order_at
+FROM ${ref("sgt_tracking_visitors")} stv
+INNER JOIN ${ref("sgt_tracking_ciks")} stc ON stc.visitor_id = stv.id
+INNER JOIN cik_attribution cf ON cf.cik = stc.cik
+LEFT JOIN ${ref("sgt_tracking_users")} stu ON stu.id = stv.user_id
+LEFT JOIN ${ref("sgt_tracking_ciks_blacklist")} stcb ON stcb.visitor_id = stv.id
+LEFT JOIN ${ref("visitors_attribution_uuid_first_order")} cfo ON cfo.cik = stc.cik
+LEFT JOIN ${ref("bot_visitor_ids")} bvi ON bvi.visitor_id = stv.id
+LEFT JOIN ${ref("b2b_enrolled_visitor_ids")} bev ON bev.visitor_id = stv.id
+LEFT JOIN ${ref("singulart_visitor_ids")} svi ON svi.visitor_id = stv.id
+GROUP BY stc.cik, cf.first_country, cf.last_locale, cf.first_session_id, cf.first_campaign_id,
+         cf.first_session_at, cf.last_session_id, cf.last_campaign_id, cf.last_session_at,
+         cfo.first_order_at, cfo.last_order_at
+
+UNION ALL
+
+SELECT
+  CONCAT('v-', stv.id) AS uuid,
+  ARRAY_AGG(stv.id ORDER BY stv.id LIMIT 1) AS visitor_ids,
+  ARRAY_AGG(DISTINCT stu.id IGNORE NULLS ORDER BY stu.id) AS user_ids,
+  ARRAY_AGG(DISTINCT stu.uuid IGNORE NULLS) AS uuid_ids,
+  IF(bvi.visitor_id IS NOT NULL, 1, 0) AS bot,
+  MAX(IF(bev.visitor_id IS NOT NULL, 1, 0)) AS b2b_enrolled,
+  MAX(IF(svi.visitor_id IS NOT NULL, 1, 0)) AS singulart,
+  MAX(IF(stcb.visitor_id IS NOT NULL, 1, 0)) AS blacklisted,
+  stv.country AS first_country,
+  stv.locale AS last_locale,
+  vsa.first_session_id,
+  vsa.first_campaign_id,
+  vsa.first_session_at,
+  vsa.last_session_id,
+  vsa.last_campaign_id,
+  vsa.last_session_at,
+  vfo.first_order_at,
+  vfo.last_order_at
+FROM ${ref("sgt_tracking_visitors")} stv
+INNER JOIN ${ref("visitors_attribution_sessions_agg")} vsa ON vsa.visitor_id = stv.id
+LEFT JOIN ${ref("sgt_tracking_users")} stu ON stu.id = stv.user_id
+LEFT JOIN ${ref("sgt_tracking_ciks")} stc ON stc.visitor_id = stv.id
+LEFT JOIN ${ref("sgt_tracking_ciks_blacklist")} stcb ON stcb.visitor_id = stv.id
+LEFT JOIN ${ref("visitors_attribution_uuid_first_order")} vfo ON vfo.uuid = SAFE_CAST(stv.id AS STRING)
+LEFT JOIN ${ref("bot_visitor_ids")} bvi ON bvi.visitor_id = stv.id
+LEFT JOIN ${ref("b2b_enrolled_visitor_ids")} bev ON bev.visitor_id = stv.id
+LEFT JOIN ${ref("singulart_visitor_ids")} svi ON svi.visitor_id = stv.id
+WHERE stc.cik IS NULL
+GROUP BY stv.id, bot, stv.country, stv.locale,
+         vsa.first_session_id, vsa.first_campaign_id, vsa.first_session_at,
+         vsa.last_session_id, vsa.last_campaign_id, vsa.last_session_at,
+         vfo.first_order_at, vfo.last_order_at

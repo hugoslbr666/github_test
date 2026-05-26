@@ -1,0 +1,22 @@
+config {
+  type: "table",
+  database: "singulart-data",
+  name: "visitors_attribution_sessions_agg",
+  schema: "tech",
+  tags: ["tech","4h","pre_agg"],
+  bigquery: {
+    partitionBy: "DATE(first_session_at)",
+    clusterBy: ["visitor_id"]
+  }
+}
+
+SELECT
+  visitor_id,
+  ARRAY_AGG(id ORDER BY created_at LIMIT 1)[SAFE_OFFSET(0)] AS first_session_id,
+  ARRAY_AGG(tracking_campaign_id IGNORE NULLS ORDER BY created_at LIMIT 1)[SAFE_OFFSET(0)] AS first_campaign_id,
+  ARRAY_AGG(created_at IGNORE NULLS ORDER BY created_at LIMIT 1)[SAFE_OFFSET(0)] AS first_session_at,
+  ARRAY_AGG(id ORDER BY created_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS last_session_id,
+  ARRAY_AGG(tracking_campaign_id IGNORE NULLS ORDER BY created_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS last_campaign_id,
+  ARRAY_AGG(created_at IGNORE NULLS ORDER BY created_at DESC LIMIT 1)[SAFE_OFFSET(0)] AS last_session_at
+FROM ${ref("sgt_tracking_visitors_sessions")}
+GROUP BY visitor_id
