@@ -10,7 +10,7 @@ WITH views_on_artist_page AS (
   CROSS JOIN UNNEST(items) i
   INNER JOIN `singulart-data.connected_sheets.all_artworks` aa  on aa.artwork_id = SAFE_CAST(i.item_id AS INT64)
   INNER JOIN `singulart-data.connected_sheets.all_artists` a_a  on a_a.artist_id = aa.artist_id
-  WHERE event_date >= '2026-05-01'
+  WHERE event_date >= '2026-02-01'
     AND i.item_list_name IN ('ap')
     --AND SAFE_CAST(i.item_list_index AS INT64) < 10
     AND i.item_list_index IS NOT NULL
