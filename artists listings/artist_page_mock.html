@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Singulart — Artist Page Mock</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f9f9f7;
+      color: #1a1a1a;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e5e5;
+      padding: 14px 40px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header .logo {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #1a1a1a;
+    }
+    header .logo span { color: #c8a96e; }
+
+    /* ── Controls ── */
+    .controls {
+      background: #fff;
+      padding: 20px 40px;
+      border-bottom: 1px solid #e5e5e5;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .controls label { font-size: 13px; color: #666; white-space: nowrap; }
+
+    input[type="file"] {
+      font-size: 13px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 6px 10px;
+      background: #fafafa;
+      cursor: pointer;
+    }
+
+    select {
+      font-size: 14px;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fff;
+      min-width: 260px;
+      cursor: pointer;
+    }
+
+    .status {
+      font-size: 12px;
+      color: #999;
+    }
+
+    /* ── Artist header ── */
+    .artist-header {
+      padding: 32px 40px 16px;
+    }
+    .artist-header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .artist-header .subtitle {
+      font-size: 13px;
+      color: #888;
+    }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 24px;
+      padding: 16px 40px 60px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      transition: box-shadow 0.2s;
+      position: relative;
+    }
+    .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.13); }
+
+    .card .rank {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 20px;
+    }
+
+    .card img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      display: block;
+      background: #eee;
+    }
+
+    .card .info {
+      padding: 10px 12px 12px;
+    }
+
+    .card .score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .card .score-label {
+      font-size: 11px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .card .score-value {
+      font-size: 13px;
+      font-weight: 600;
+      color: #c8a96e;
+    }
+
+    .card .price {
+      font-size: 13px;
+      color: #555;
+    }
+
+    .card .views {
+      font-size: 11px;
+      color: #bbb;
+      margin-top: 2px;
+    }
+
+    /* score bar */
+    .bar-wrap {
+      height: 3px;
+      background: #f0f0f0;
+      border-radius: 2px;
+      margin-top: 8px;
+    }
+    .bar {
+      height: 3px;
+      background: #c8a96e;
+      border-radius: 2px;
+      transition: width 0.4s;
+    }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center;
+      padding: 80px 40px;
+      color: #aaa;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SINGULART<span>.</span></div>
+  <span style="color:#ccc;font-size:14px">Artist Page Mock — similarity ranking</span>
+</header>
+
+<div class="controls">
+  <label>1. Load CSV</label>
+  <input type="file" id="csvFile" accept=".csv" />
+  <label>2. Select artist</label>
+  <select id="artistSelect" disabled>
+    <option value="">— load CSV first —</option>
+  </select>
+  <span class="status" id="status"></span>
+</div>
+
+<div id="app">
+  <div class="empty">Load the CSV file and select an artist to see the ranking.</div>
+</div>
+
+<script>
+  // ── CSV parser (handles quoted fields) ──────────────────────────────────────
+  function parseCSV(text) {
+    const lines = text.split('\n');
+    const headers = lines[0].split(',');
+    const idx = name => headers.indexOf(name);
+
+    const I = {
+      name:    idx('artist_name'),
+      id:      idx('artist_id'),
+      artId:   idx('available_artwork_id'),
+      price:   idx('price_eur'),
+      views:   idx('nb_views_L30days'),
+      score:   idx('global_similarity_score'),
+      picture: idx('last_artwork_picture'),
+    };
+
+    const artworks = {};   // keyed by artwork_id, deduped
+    for (let i = 1; i < lines.length; i++) {
+      const cols = splitLine(lines[i]);
+      if (cols.length < 7) continue;
+      const artId = cols[I.artId];
+      if (!artId || artworks[artId]) continue;   // skip dupes from multi-picture join
+      artworks[artId] = {
+        artistName: cols[I.name],
+        artistId:   cols[I.id],
+        artId,
+        price:      parseFloat(cols[I.price])  || 0,
+        views:      parseFloat(cols[I.views])  || 0,
+        score:      parseFloat(cols[I.score])  || 0,
+        picture:    cols[I.picture].trim(),
+      };
+    }
+    return Object.values(artworks);
+  }
+
+  function splitLine(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let c of line) {
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { result.push(cur); cur = ''; }
+      else cur += c;
+    }
+    result.push(cur);
+    return result;
+  }
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let allArtworks = [];
+  let byArtist    = {};
+
+  // ── File load ───────────────────────────────────────────────────────────────
+  document.getElementById('csvFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const status = document.getElementById('status');
+    status.textContent = 'Parsing…';
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      allArtworks = parseCSV(ev.target.result);
+      byArtist = {};
+      allArtworks.forEach(a => {
+        if (!byArtist[a.artistName]) byArtist[a.artistName] = [];
+        byArtist[a.artistName].push(a);
+      });
+
+      const sel = document.getElementById('artistSelect');
+      sel.innerHTML = '<option value="">— select an artist —</option>';
+      Object.keys(byArtist).sort().forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = `${name} (${byArtist[name].length} artworks)`;
+        sel.appendChild(opt);
+      });
+      sel.disabled = false;
+      status.textContent = `${allArtworks.length.toLocaleString()} artworks loaded across ${Object.keys(byArtist).length} artists.`;
+    };
+    reader.readAsText(file);
+  });
+
+  // ── Artist select ────────────────────────────────────────────────────────────
+  document.getElementById('artistSelect').addEventListener('change', function(e) {
+    const name = e.target.value;
+    if (!name) {
+      document.getElementById('app').innerHTML = '<div class="empty">Select an artist.</div>';
+      return;
+    }
+    renderArtist(name);
+  });
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  function renderArtist(name) {
+    const artworks = byArtist[name]
+      .slice()
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 25);
+
+    const maxScore = artworks[0]?.score || 1;
+
+    let html = `
+      <div class="artist-header">
+        <h1>${name}</h1>
+        <div class="subtitle">Top 25 artworks ranked by similarity score — most likely to sell first</div>
+      </div>
+      <div class="grid">
+    `;
+
+    artworks.forEach((aw, i) => {
+      const barW = Math.round((aw.score / maxScore) * 100);
+      html += `
+        <div class="card">
+          <div class="rank">#${i + 1}</div>
+          <img src="${aw.picture}" alt="Artwork ${aw.artId}" loading="lazy"
+               onerror="this.style.background='#ddd';this.removeAttribute('src')" />
+          <div class="info">
+            <div class="score-row">
+              <span class="score-label">Similarity score</span>
+              <span class="score-value">${aw.score.toFixed(0)}</span>
+            </div>
+            <div class="bar-wrap"><div class="bar" style="width:${barW}%"></div></div>
+            <div class="price" style="margin-top:8px">€${aw.price.toLocaleString()}</div>
+            <div class="views">${aw.views} views (L30d)</div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+    document.getElementById('app').innerHTML = html;
+  }
+</script>
+</body>
+</html>
