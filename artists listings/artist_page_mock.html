@@ -167,6 +167,33 @@
       transition: width 0.4s;
     }
 
+    /* ── Filter bar ── */
+    .filters {
+      background: #fff;
+      padding: 12px 40px;
+      border-bottom: 1px solid #e5e5e5;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .filters .flabel { font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .toggle-group { display: flex; gap: 4px; }
+    .toggle {
+      font-size: 12px;
+      padding: 5px 12px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      background: #fff;
+      color: #666;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .toggle:hover { border-color: #c8a96e; color: #c8a96e; }
+    .toggle.active { background: #c8a96e; border-color: #c8a96e; color: #fff; font-weight: 600; }
+    .filter-count { font-size: 12px; color: #aaa; }
+
     /* ── Empty state ── */
     .empty {
       text-align: center;
@@ -191,6 +218,17 @@
     <option value="">— load CSV first —</option>
   </select>
   <span class="status" id="status"></span>
+</div>
+
+<div class="filters" id="filtersBar" style="display:none">
+  <span class="flabel">Price diversity</span>
+  <div class="toggle-group" id="priceFilter">
+    <button class="toggle active" data-value="all">All</button>
+    <button class="toggle" data-value="no_diversity">No diversity (&lt;€200)</button>
+    <button class="toggle" data-value="slightly_diverse">Slightly diverse (€200–1k)</button>
+    <button class="toggle" data-value="very_diverse">Very diverse (&gt;€1k)</button>
+  </div>
+  <span class="filter-count" id="filterCount"></span>
 </div>
 
 <div id="app">
@@ -246,8 +284,10 @@
   }
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let allArtworks = [];
-  let byArtist    = {};
+  let allArtworks  = [];
+  let byArtist     = {};
+  let artistMeta   = {};   // name -> { priceDiversity }
+  let activePrice  = 'all';
 
   // ── File load ───────────────────────────────────────────────────────────────
   document.getElementById('csvFile').addEventListener('change', function(e) {
@@ -264,18 +304,54 @@
         byArtist[a.artistName].push(a);
       });
 
-      const sel = document.getElementById('artistSelect');
-      sel.innerHTML = '<option value="">— select an artist —</option>';
-      Object.keys(byArtist).sort((a, b) => byArtist[b].length - byArtist[a].length).forEach(name => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = `${name} (${byArtist[name].length} artworks)`;
-        sel.appendChild(opt);
+      // Compute price diversity per artist
+      artistMeta = {};
+      Object.keys(byArtist).forEach(name => {
+        const prices = byArtist[name].map(a => a.price).filter(p => p > 0);
+        const delta  = prices.length > 1 ? Math.max(...prices) - Math.min(...prices) : 0;
+        artistMeta[name] = {
+          priceDiversity: delta < 200 ? 'no_diversity' : delta <= 1000 ? 'slightly_diverse' : 'very_diverse'
+        };
       });
-      sel.disabled = false;
-      status.textContent = `${allArtworks.length.toLocaleString()} artworks loaded across ${Object.keys(byArtist).length} artists.`;
+
+      document.getElementById('filtersBar').style.display = 'flex';
+      status.textContent = `${allArtworks.length.toLocaleString()} artworks · ${Object.keys(byArtist).length} artists`;
+      populateDropdown();
     };
     reader.readAsText(file);
+  });
+
+  // ── Populate dropdown ────────────────────────────────────────────────────────
+  function populateDropdown() {
+    const sel = document.getElementById('artistSelect');
+    const filtered = Object.keys(byArtist)
+      .filter(name => activePrice === 'all' || artistMeta[name].priceDiversity === activePrice)
+      .sort((a, b) => byArtist[b].length - byArtist[a].length);
+
+    sel.innerHTML = '<option value="">— select an artist —</option>';
+    filtered.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = `${name} (${byArtist[name].length} artworks)`;
+      sel.appendChild(opt);
+    });
+    sel.disabled = false;
+    document.getElementById('filterCount').textContent = `${filtered.length} artists shown`;
+
+    if (sel.value && !filtered.includes(sel.value)) {
+      sel.value = '';
+      document.getElementById('app').innerHTML = '<div class="empty">Select an artist.</div>';
+    }
+  }
+
+  // ── Price filter toggle ───────────────────────────────────────────────────────
+  document.getElementById('priceFilter').addEventListener('click', function(e) {
+    const btn = e.target.closest('.toggle');
+    if (!btn) return;
+    this.querySelectorAll('.toggle').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activePrice = btn.dataset.value;
+    populateDropdown();
   });
 
   // ── Artist select ────────────────────────────────────────────────────────────
