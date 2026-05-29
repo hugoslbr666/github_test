@@ -194,6 +194,49 @@
     .toggle.active { background: #c8a96e; border-color: #c8a96e; color: #fff; font-weight: 600; }
     .filter-count { font-size: 12px; color: #aaa; }
 
+    /* ── Mix slider ── */
+    .mix-bar {
+      background: #fff;
+      padding: 14px 40px;
+      border-bottom: 1px solid #e5e5e5;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .mix-bar .flabel { font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .cluster-chip {
+      font-size: 11px; font-weight: 700;
+      padding: 3px 9px; border-radius: 20px;
+      color: #fff; white-space: nowrap;
+    }
+    .cluster-chip.q1 { background: #c8a96e; }
+    .cluster-chip.q2 { background: #5b9bd5; }
+    .pct-label { font-size: 13px; font-weight: 600; min-width: 36px; text-align: center; }
+    .pct-label.q1 { color: #c8a96e; }
+    .pct-label.q2 { color: #5b9bd5; }
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none;
+      width: 200px; height: 4px;
+      border-radius: 2px; outline: none; cursor: pointer;
+      background: linear-gradient(to right, #c8a96e var(--pct, 70%), #5b9bd5 var(--pct, 70%));
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; border: 2px solid #aaa; cursor: pointer;
+    }
+    .mix-info { font-size: 12px; color: #aaa; margin-left: 8px; }
+
+    /* ── Cluster badge on card ── */
+    .cluster-badge {
+      position: absolute; top: 10px; right: 10px;
+      font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 20px; color: #fff;
+    }
+    .cluster-badge.q1 { background: #c8a96e; }
+    .cluster-badge.q2 { background: #5b9bd5; }
+
     /* ── Empty state ── */
     .empty {
       text-align: center;
@@ -229,6 +272,16 @@
     <button class="toggle" data-value="very_diverse">Very diverse (&gt;€1k)</button>
   </div>
   <span class="filter-count" id="filterCount"></span>
+</div>
+
+<div class="mix-bar" id="mixBar" style="display:none">
+  <span class="flabel">Page mix</span>
+  <span class="cluster-chip q1">Q1 — most similar</span>
+  <span class="pct-label q1" id="q1Pct">70%</span>
+  <input type="range" id="mixSlider" min="0" max="100" value="70" step="5" style="--pct:70%" />
+  <span class="pct-label q2" id="q2Pct">30%</span>
+  <span class="cluster-chip q2">Q2 — less similar</span>
+  <span class="mix-info" id="mixInfo"></span>
 </div>
 
 <div id="app">
@@ -288,6 +341,7 @@
   let byArtist     = {};
   let artistMeta   = {};   // name -> { priceDiversity }
   let activePrice  = 'all';
+  let mixPct       = 70;   // % from Q1 (most similar)
 
   // ── File load ───────────────────────────────────────────────────────────────
   document.getElementById('csvFile').addEventListener('change', function(e) {
@@ -315,6 +369,7 @@
       });
 
       document.getElementById('filtersBar').style.display = 'flex';
+      document.getElementById('mixBar').style.display = 'flex';
       status.textContent = `${allArtworks.length.toLocaleString()} artworks · ${Object.keys(byArtist).length} artists`;
       populateDropdown();
     };
@@ -354,6 +409,16 @@
     populateDropdown();
   });
 
+  // ── Mix slider ───────────────────────────────────────────────────────────────
+  document.getElementById('mixSlider').addEventListener('input', function() {
+    mixPct = parseInt(this.value);
+    this.style.setProperty('--pct', mixPct + '%');
+    document.getElementById('q1Pct').textContent = mixPct + '%';
+    document.getElementById('q2Pct').textContent = (100 - mixPct) + '%';
+    const name = document.getElementById('artistSelect').value;
+    if (name) renderArtist(name);
+  });
+
   // ── Artist select ────────────────────────────────────────────────────────────
   document.getElementById('artistSelect').addEventListener('change', function(e) {
     const name = e.target.value;
@@ -366,17 +431,50 @@
 
   // ── Render ──────────────────────────────────────────────────────────────────
   function renderArtist(name) {
-    const artworks = byArtist[name]
-      .slice()
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 25);
+    const sorted = byArtist[name].slice().sort((a, b) => b.score - a.score);
+    const n = sorted.length;
+    const qSize = Math.ceil(n / 5);
 
-    const maxScore = artworks[0]?.score || 1;
+    // Per-artist quintiles: Q1 = most similar, Q5 = least similar
+    const q1Pool = sorted.slice(0, qSize).map(a => ({ ...a, cluster: 1 }));
+    const q2Pool = sorted.slice(qSize, 2 * qSize).map(a => ({ ...a, cluster: 2 }));
+
+    const total   = 25;
+    const wantQ1  = Math.round(total * mixPct / 100);
+    const wantQ2  = total - wantQ1;
+    const fromQ1  = q1Pool.slice(0, wantQ1);
+    const fromQ2  = q2Pool.slice(0, wantQ2);
+
+    // Interleave proportionally (e.g. 70/30 → Q1,Q1,Q2,Q1,Q1,Q2,Q1,Q2 …)
+    const artworks = [];
+    let i1 = 0, i2 = 0;
+    const ratio = fromQ1.length > 0 && fromQ2.length > 0
+      ? fromQ1.length / fromQ2.length : null;
+    let acc = 0;
+    while (i1 < fromQ1.length || i2 < fromQ2.length) {
+      if (i2 >= fromQ2.length || (i1 < fromQ1.length && (ratio === null || acc < ratio))) {
+        artworks.push(fromQ1[i1++]);
+        acc = ratio ? acc - 1 : acc;
+      } else {
+        artworks.push(fromQ2[i2++]);
+        acc += ratio || 0;
+      }
+      if (ratio) acc += 1;
+    }
+
+    // Update mix info
+    document.getElementById('mixInfo').textContent =
+      `${fromQ1.length} from Q1${fromQ1.length < wantQ1 ? ' (not enough artworks)' : ''} · ${fromQ2.length} from Q2${fromQ2.length < wantQ2 ? ' (not enough artworks)' : ''}`;
+
+    const maxScore = sorted[0]?.score || 1;
+    const pdLabel = { no_diversity: 'No price diversity', slightly_diverse: 'Slightly diverse pricing', very_diverse: 'Very diverse pricing' }[artistMeta[name].priceDiversity];
 
     let html = `
       <div class="artist-header">
-        <h1>${name}</h1>
-        <div class="subtitle">Top 25 artworks ranked by similarity score — most likely to sell first</div>
+        <h1>${name}
+          <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:10px;vertical-align:middle">· ${pdLabel}</span>
+        </h1>
+        <div class="subtitle">Showing ${artworks.length} artworks · <span style="color:#c8a96e;font-weight:600">${fromQ1.length} Q1</span> + <span style="color:#5b9bd5;font-weight:600">${fromQ2.length} Q2</span> · mixed by similarity</div>
       </div>
       <div class="grid">
     `;
@@ -386,6 +484,7 @@
       html += `
         <div class="card">
           <div class="rank">#${i + 1}</div>
+          <div class="cluster-badge q${aw.cluster}">Q${aw.cluster}</div>
           <img src="${aw.picture}" alt="Artwork ${aw.artId}" loading="lazy"
                onerror="this.style.background='#ddd';this.removeAttribute('src')" />
           <div class="info">
