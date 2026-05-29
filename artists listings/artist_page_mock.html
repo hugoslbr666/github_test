@@ -266,7 +266,7 @@
 
       const sel = document.getElementById('artistSelect');
       sel.innerHTML = '<option value="">— select an artist —</option>';
-      Object.keys(byArtist).sort().forEach(name => {
+      Object.keys(byArtist).sort((a, b) => byArtist[b].length - byArtist[a].length).forEach(name => {
         const opt = document.createElement('option');
         opt.value = name;
         opt.textContent = `${name} (${byArtist[name].length} artworks)`;
