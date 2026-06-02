@@ -19,6 +19,7 @@ similarity_computations AS (
     available_artwork_id,
     available.price_eur,
     available.picture,
+    available.medium,
     sum((1-similarity))                                                                                    AS sum_similarities,
     count(sold_artwork_id)                                                                                 AS nb_of_similarities,
     count(case when (1-similarity) >= 0.8                        then sold_artwork_id else null end)       AS nb_cluster_1,
@@ -33,13 +34,14 @@ similarity_computations AS (
   WHERE available_artwork_id <> sold_artwork_id
     AND available.artist_id = sold.artist_id
     AND artists.last_sale_at IS NOT NULL
-  GROUP BY 1, 2, 3, 4, 5
+  GROUP BY 1, 2, 3, 4, 5, 6
 )
 
 SELECT
   sc.artist_name,
   sc.artist_id,
   sc.available_artwork_id,
+  sc.medium,
   sc.price_eur,
   COALESCE(v.nb_views, 0)                                                                                  AS nb_views_L30days,
   sum_similarities

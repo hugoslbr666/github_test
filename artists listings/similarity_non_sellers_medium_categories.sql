@@ -35,6 +35,7 @@ similarity_computations as (
     available_artwork_id,
     available.price_eur,
     available.picture,
+    available.medium,
     sum((1-similarity))                                                                                    as sum_similarities,
     count(sold_artwork_id)                                                                             as nb_of_similarities,
     max((1-similarity))                                                                                    as max_similarity,
@@ -57,13 +58,14 @@ similarity_computations as (
       inner join unnest(split(sold.categories, ',')) as sold_cat on avail_cat = sold_cat
     )
     and (sales_per_artist.nb_sales < 3 or last_sale_at is null)
-  group by 1, 2, 3, 4, 5
+  group by 1, 2, 3, 4, 5, 6
 )
 
 select
   sc.artist_name,
   sc.artist_id,
   sc.available_artwork_id,
+  sc.medium,
   sc.price_eur,
   nb_views as nb_views_L30days,
   max_similarity,

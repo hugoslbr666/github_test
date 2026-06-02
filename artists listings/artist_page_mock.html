@@ -227,6 +227,14 @@
       background: #fff; border: 2px solid #aaa; cursor: pointer;
     }
     .mix-info { font-size: 12px; color: #aaa; margin-left: 8px; }
+    .divider { width: 1px; height: 24px; background: #e5e5e5; margin: 0 6px; }
+    .med-toggle {
+      font-size: 12px; padding: 5px 14px;
+      border: 1px solid #ddd; border-radius: 20px;
+      background: #fff; color: #666; cursor: pointer; transition: all .15s;
+    }
+    .med-toggle:hover { border-color: #7c5cbf; color: #7c5cbf; }
+    .med-toggle.active { background: #7c5cbf; border-color: #7c5cbf; color: #fff; font-weight: 600; }
 
     /* ── Cluster badge on card ── */
     .cluster-badge {
@@ -236,6 +244,11 @@
     }
     .cluster-badge.q1 { background: #c8a96e; }
     .cluster-badge.q2 { background: #5b9bd5; }
+    .medium-label {
+      display: inline-block; margin-top: 4px;
+      font-size: 10px; color: #fff;
+      background: #7c5cbf; padding: 2px 7px; border-radius: 20px;
+    }
 
     /* ── Empty state ── */
     .empty {
@@ -282,6 +295,8 @@
   <span class="pct-label q2" id="q2Pct">30%</span>
   <span class="cluster-chip q2">Q2 — less similar</span>
   <span class="mix-info" id="mixInfo"></span>
+  <div class="divider"></div>
+  <button class="med-toggle" id="medToggle">Medium diversity: OFF</button>
 </div>
 
 <div id="app">
@@ -299,6 +314,7 @@
       name:    idx('artist_name'),
       id:      idx('artist_id'),
       artId:   idx('available_artwork_id'),
+      medium:  idx('medium'),
       price:   idx('price_eur'),
       views:   idx('nb_views_L30days'),
       score:   idx('global_similarity_score'),
@@ -318,6 +334,7 @@
         price:      parseFloat(cols[I.price])  || 0,
         views:      parseFloat(cols[I.views])  || 0,
         score:      parseFloat(cols[I.score])  || 0,
+        medium:     (cols[I.medium] || '').trim().toLowerCase(),
         picture:    cols[I.picture].trim(),
       };
     }
@@ -341,7 +358,8 @@
   let byArtist     = {};
   let artistMeta   = {};   // name -> { priceDiversity }
   let activePrice  = 'all';
-  let mixPct       = 70;   // % from Q1 (most similar)
+  let mixPct        = 70;   // % from Q1 (most similar)
+  let mediumDiv     = false; // medium diversity toggle
 
   // ── File load ───────────────────────────────────────────────────────────────
   document.getElementById('csvFile').addEventListener('change', function(e) {
@@ -419,6 +437,15 @@
     if (name) renderArtist(name);
   });
 
+  // ── Medium diversity toggle ──────────────────────────────────────────────────
+  document.getElementById('medToggle').addEventListener('click', function() {
+    mediumDiv = !mediumDiv;
+    this.textContent = `Medium diversity: ${mediumDiv ? 'ON' : 'OFF'}`;
+    this.classList.toggle('active', mediumDiv);
+    const name = document.getElementById('artistSelect').value;
+    if (name) renderArtist(name);
+  });
+
   // ── Artist select ────────────────────────────────────────────────────────────
   document.getElementById('artistSelect').addEventListener('change', function(e) {
     const name = e.target.value;
@@ -429,62 +456,102 @@
     renderArtist(name);
   });
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-  function renderArtist(name) {
-    const sorted = byArtist[name].slice().sort((a, b) => b.score - a.score);
-    const n = sorted.length;
-    const qSize = Math.ceil(n / 5);
-
-    // Per-artist quintiles: Q1 = most similar, Q5 = least similar
-    const q1Pool = sorted.slice(0, qSize).map(a => ({ ...a, cluster: 1 }));
-    const q2Pool = sorted.slice(qSize, 2 * qSize).map(a => ({ ...a, cluster: 2 }));
-
-    const total   = 25;
-    const wantQ1  = Math.round(total * mixPct / 100);
-    const wantQ2  = total - wantQ1;
-    const fromQ1  = q1Pool.slice(0, wantQ1);
-    const fromQ2  = q2Pool.slice(0, wantQ2);
-
-    // Interleave proportionally (e.g. 70/30 → Q1,Q1,Q2,Q1,Q1,Q2,Q1,Q2 …)
-    const artworks = [];
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  function interleave(a, b) {
+    const out = [];
     let i1 = 0, i2 = 0;
-    const ratio = fromQ1.length > 0 && fromQ2.length > 0
-      ? fromQ1.length / fromQ2.length : null;
+    const ratio = (a.length > 0 && b.length > 0) ? a.length / b.length : null;
     let acc = 0;
-    while (i1 < fromQ1.length || i2 < fromQ2.length) {
-      if (i2 >= fromQ2.length || (i1 < fromQ1.length && (ratio === null || acc < ratio))) {
-        artworks.push(fromQ1[i1++]);
-        acc = ratio ? acc - 1 : acc;
+    while (i1 < a.length || i2 < b.length) {
+      if (i2 >= b.length || (i1 < a.length && (ratio === null || acc < ratio))) {
+        out.push(a[i1++]); if (ratio) acc -= 1;
       } else {
-        artworks.push(fromQ2[i2++]);
-        acc += ratio || 0;
+        out.push(b[i2++]); if (ratio) acc += ratio;
       }
       if (ratio) acc += 1;
     }
+    return out;
+  }
 
-    // Update mix info
-    document.getElementById('mixInfo').textContent =
-      `${fromQ1.length} from Q1${fromQ1.length < wantQ1 ? ' (not enough artworks)' : ''} · ${fromQ2.length} from Q2${fromQ2.length < wantQ2 ? ' (not enough artworks)' : ''}`;
+  function applyClusterLabels(sorted, pool) {
+    // Label each artwork Q1/Q2 based on where it falls in the artist's full score ranking
+    const total = sorted.length;
+    const qSize = Math.ceil(total / 5);
+    const q1Ids = new Set(sorted.slice(0, qSize).map(a => a.artId));
+    const q2Ids = new Set(sorted.slice(qSize, 2 * qSize).map(a => a.artId));
+    return pool.map(a => ({
+      ...a,
+      cluster: q1Ids.has(a.artId) ? 1 : q2Ids.has(a.artId) ? 2 : null,
+    }));
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  function renderArtist(name) {
+    const sorted = byArtist[name].slice().sort((a, b) => b.score - a.score);
+    const total  = 25;
+    let artworks, subtitleExtra;
+
+    if (!mediumDiv) {
+      // ── Pure ranking: Q1/Q2 mix from global score ──────────────────────────
+      const qSize  = Math.ceil(sorted.length / 5);
+      const q1Pool = sorted.slice(0, qSize).map(a => ({ ...a, cluster: 1 }));
+      const q2Pool = sorted.slice(qSize, 2 * qSize).map(a => ({ ...a, cluster: 2 }));
+      const wantQ1 = Math.round(total * mixPct / 100);
+      const wantQ2 = total - wantQ1;
+      const fromQ1 = q1Pool.slice(0, wantQ1);
+      const fromQ2 = q2Pool.slice(0, wantQ2);
+      artworks = interleave(fromQ1, fromQ2);
+      subtitleExtra = `<span style="color:#c8a96e;font-weight:600">${fromQ1.length} Q1</span> + <span style="color:#5b9bd5;font-weight:600">${fromQ2.length} Q2</span>`;
+      document.getElementById('mixInfo').textContent =
+        `${fromQ1.length} Q1${fromQ1.length < wantQ1 ? ' ⚠ not enough' : ''} · ${fromQ2.length} Q2${fromQ2.length < wantQ2 ? ' ⚠ not enough' : ''}`;
+
+    } else {
+      // ── Medium diversity: strict round-robin across top 2 mediums ────────────
+      const medCounts = {};
+      sorted.forEach(a => medCounts[a.medium] = (medCounts[a.medium] || 0) + 1);
+      const topMeds  = Object.entries(medCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(e => e[0]);
+      const med1Pool = applyClusterLabels(sorted, sorted.filter(a => a.medium === topMeds[0]));
+      const med2Pool = applyClusterLabels(sorted, sorted.filter(a => a.medium === topMeds[1]));
+
+      // Alternate: best med1, best med2, 2nd med1, 2nd med2 … until 25 slots filled
+      artworks = [];
+      let i1 = 0, i2 = 0;
+      const maxMed2 = 5;
+      while (artworks.length < total && (i1 < med1Pool.length || (i2 < med2Pool.length && i2 < maxMed2))) {
+        if (i1 < med1Pool.length) artworks.push(med1Pool[i1++]);
+        if (artworks.length < total && i2 < med2Pool.length && i2 < maxMed2) artworks.push(med2Pool[i2++]);
+      }
+      // fill remaining slots with medium 1 if medium 2 cap reached
+      while (artworks.length < total && i1 < med1Pool.length) artworks.push(med1Pool[i1++]);
+
+      subtitleExtra = `<span style="color:#7c5cbf;font-weight:600">${i1} ${topMeds[0] || '—'}</span> + <span style="color:#7c5cbf;font-weight:600;opacity:.7">${i2} ${topMeds[1] || '—'}</span> · alternating`;
+      document.getElementById('mixInfo').textContent =
+        `${i1} ${topMeds[0]} · ${i2} ${topMeds[1] || 'n/a'} · round-robin`;
+    }
 
     const maxScore = sorted[0]?.score || 1;
-    const pdLabel = { no_diversity: 'No price diversity', slightly_diverse: 'Slightly diverse pricing', very_diverse: 'Very diverse pricing' }[artistMeta[name].priceDiversity];
+    const pdLabel  = { no_diversity: 'No price diversity', slightly_diverse: 'Slightly diverse', very_diverse: 'Very diverse pricing' }[artistMeta[name].priceDiversity];
 
     let html = `
       <div class="artist-header">
         <h1>${name}
           <span style="font-size:13px;font-weight:400;color:#aaa;margin-left:10px;vertical-align:middle">· ${pdLabel}</span>
         </h1>
-        <div class="subtitle">Showing ${artworks.length} artworks · <span style="color:#c8a96e;font-weight:600">${fromQ1.length} Q1</span> + <span style="color:#5b9bd5;font-weight:600">${fromQ2.length} Q2</span> · mixed by similarity</div>
+        <div class="subtitle">Showing ${artworks.length} artworks · ${subtitleExtra}</div>
       </div>
       <div class="grid">
     `;
 
     artworks.forEach((aw, i) => {
-      const barW = Math.round((aw.score / maxScore) * 100);
+      const barW        = Math.round((aw.score / maxScore) * 100);
+      const clusterBadge = aw.cluster
+        ? `<div class="cluster-badge q${aw.cluster}">Q${aw.cluster}</div>` : '';
+      const medLabel    = mediumDiv && aw.medium
+        ? `<span class="medium-label">${aw.medium}</span>` : '';
       html += `
         <div class="card">
           <div class="rank">#${i + 1}</div>
-          <div class="cluster-badge q${aw.cluster}">Q${aw.cluster}</div>
+          ${clusterBadge}
           <img src="${aw.picture}" alt="Artwork ${aw.artId}" loading="lazy"
                onerror="this.style.background='#ddd';this.removeAttribute('src')" />
           <div class="info">
@@ -495,6 +562,7 @@
             <div class="bar-wrap"><div class="bar" style="width:${barW}%"></div></div>
             <div class="price" style="margin-top:8px">€${aw.price.toLocaleString()}</div>
             <div class="views">${aw.views} views (L30d)</div>
+            ${medLabel}
           </div>
         </div>
       `;
