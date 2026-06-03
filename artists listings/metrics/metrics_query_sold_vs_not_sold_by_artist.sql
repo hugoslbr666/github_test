@@ -32,6 +32,7 @@ with_cumulative AS (
 quartile_split AS (
   SELECT
     artist_id,
+    total_bv,
     CASE
       WHEN cumulative_pct <= 25 THEN '1. Top 25%'
       WHEN cumulative_pct <= 50 THEN '2. Top 25-50%'
@@ -45,11 +46,13 @@ artworks_and_sales_L6_months AS (
   SELECT
     aa.artwork_id,
     aa.artist_id,
+    a_a.artist_name,
     aa.artwork_online_at,
     aa.price_eur,
     is_hiearchically_online,
     a_s.paid_at
   FROM `singulart-data.connected_sheets.all_artworks` aa
+  INNER JOIN `singulart-data.connected_sheets.all_artists` a_a ON a_a.artist_id = aa.artist_id
   LEFT JOIN `singulart-data.connected_sheets.all_sales` a_s ON a_s.artwork_id = aa.artwork_id AND paid_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
   WHERE (is_hiearchically_online = 1 OR paid_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH))
 ),
@@ -105,8 +108,11 @@ add_to_cart AS (
 artwork_metrics AS (
   SELECT
     asl.artwork_id,
+    asl.artist_id,
+    asl.artist_name,
     CASE WHEN asl.paid_at IS NOT NULL THEN 'sold' ELSE 'available' END AS status,
     COALESCE(qs.segment, '4. Bottom 25%') AS segment,
+    qs.total_bv,
     v.nb_views_total,
     COALESCE(w.nb_wishlist_events, 0)      AS nb_wishlist_events,
     COALESCE(c.nb_clicks, 0)               AS nb_clicks,
@@ -115,26 +121,32 @@ artwork_metrics AS (
     SAFE_DIVIDE(COALESCE(c.nb_clicks, 0),               v.nb_views_total) AS clicks_per_view,
     SAFE_DIVIDE(COALESCE(atc.nb_add_to_cart_events, 0), v.nb_views_total) AS add_to_cart_per_view
   FROM artworks_and_sales_L6_months asl
-  INNER JOIN views v    ON v.artwork_id   = asl.artwork_id
-  LEFT JOIN  clicks c   ON c.artwork_id   = asl.artwork_id
-  LEFT JOIN  wishlists w ON w.artwork_id  = asl.artwork_id
+  INNER JOIN views v     ON v.artwork_id   = asl.artwork_id
+  LEFT JOIN  clicks c    ON c.artwork_id   = asl.artwork_id
+  LEFT JOIN  wishlists w ON w.artwork_id   = asl.artwork_id
   LEFT JOIN  add_to_cart atc ON atc.artwork_id = asl.artwork_id
   LEFT JOIN  quartile_split qs ON qs.artist_id = asl.artist_id
 )
 
 SELECT
-  status,
   segment,
-  COUNT(*)                                                           AS nb_artworks,
+  artist_name,
+  MAX(total_bv)                                                                              AS total_bv,
   -- Wishlist / Views
-  ROUND(AVG(wishlist_per_view), 4)                                   AS avg_wishlist_per_view,
-  ROUND(APPROX_QUANTILES(wishlist_per_view, 2)[OFFSET(1)], 4)       AS median_wishlist_per_view,
+  ROUND(AVG(IF(status = 'sold',      wishlist_per_view, NULL)), 4)                          AS avg_wishlist_per_view_sold,
+  ROUND(AVG(IF(status = 'available', wishlist_per_view, NULL)), 4)                          AS avg_wishlist_per_view_available,
+  ROUND(APPROX_QUANTILES(IF(status = 'sold',      wishlist_per_view, NULL), 2)[OFFSET(1)], 4) AS median_wishlist_per_view_sold,
+  ROUND(APPROX_QUANTILES(IF(status = 'available', wishlist_per_view, NULL), 2)[OFFSET(1)], 4) AS median_wishlist_per_view_available,
   -- Clicks / Views
-  ROUND(AVG(clicks_per_view), 4)                                     AS avg_clicks_per_view,
-  ROUND(APPROX_QUANTILES(clicks_per_view, 2)[OFFSET(1)], 4)         AS median_clicks_per_view,
+  ROUND(AVG(IF(status = 'sold',      clicks_per_view, NULL)), 4)                            AS avg_clicks_per_view_sold,
+  ROUND(AVG(IF(status = 'available', clicks_per_view, NULL)), 4)                            AS avg_clicks_per_view_available,
+  ROUND(APPROX_QUANTILES(IF(status = 'sold',      clicks_per_view, NULL), 2)[OFFSET(1)], 4) AS median_clicks_per_view_sold,
+  ROUND(APPROX_QUANTILES(IF(status = 'available', clicks_per_view, NULL), 2)[OFFSET(1)], 4) AS median_clicks_per_view_available,
   -- Add to Cart / Views
-  ROUND(AVG(add_to_cart_per_view), 4)                                AS avg_add_to_cart_per_view,
-  ROUND(APPROX_QUANTILES(add_to_cart_per_view, 2)[OFFSET(1)], 4)    AS median_add_to_cart_per_view
+  ROUND(AVG(IF(status = 'sold',      add_to_cart_per_view, NULL)), 4)                       AS avg_add_to_cart_per_view_sold,
+  ROUND(AVG(IF(status = 'available', add_to_cart_per_view, NULL)), 4)                       AS avg_add_to_cart_per_view_available,
+  ROUND(APPROX_QUANTILES(IF(status = 'sold',      add_to_cart_per_view, NULL), 2)[OFFSET(1)], 4) AS median_add_to_cart_per_view_sold,
+  ROUND(APPROX_QUANTILES(IF(status = 'available', add_to_cart_per_view, NULL), 2)[OFFSET(1)], 4) AS median_add_to_cart_per_view_available
 FROM artwork_metrics
 GROUP BY 1, 2
-ORDER BY 1, 2
+ORDER BY total_bv DESC
