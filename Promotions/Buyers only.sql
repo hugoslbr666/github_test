@@ -58,7 +58,7 @@ non_intra AS (
     SUM(IF(ge.event_name = "purchase", ge.event_value_in_usd * scr.rate, 0)) AS bv_eur_estimate,
     COUNT(DISTINCT ge.visitor_id) AS nb_sg_visitor_id,
   FROM `singulart-data.ga_events.ga_events` ge, UNNEST(items) i
-  INNER JOIN `singulart-data.views.visitor_attribution` va ON va.visitor_id = ge.visitor_id AND va.first_order_at IS NOT NULL
+  INNER JOIN `singulart-data.views.visitor_attribution` va ON va.visitor_id = ge.visitor_id AND va.first_order_at <= ge.event_date
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_currencies_rates` scr ON scr.base_id = 142 AND scr.target_id = 43
   LEFT JOIN quartile_split qs ON qs.artist_id = i.item_brand
   WHERE ge.event_date >= "2024-11-01"
