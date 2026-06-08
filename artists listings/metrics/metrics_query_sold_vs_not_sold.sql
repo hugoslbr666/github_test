@@ -56,11 +56,14 @@ artworks_and_sales_L6_months AS (
     aa.artist_id,
     aa.artwork_online_at,
     aa.price_eur,
+    TRIM(style) AS style,
     is_hiearchically_online,
     a_s.paid_at
   FROM `singulart-data.connected_sheets.all_artworks` aa
+  CROSS JOIN UNNEST(SPLIT(aa.styles, ',')) AS style
   LEFT JOIN `singulart-data.connected_sheets.all_sales` a_s ON a_s.artwork_id = aa.artwork_id AND paid_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
-  WHERE (is_hiearchically_online = 1 OR paid_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH))
+  WHERE TRIM(style) != ''
+    AND (is_hiearchically_online = 1 OR paid_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH))
 ),
 
 views AS (
@@ -124,6 +127,7 @@ artwork_metrics AS (
     asl.artwork_id,
     CASE WHEN asl.paid_at IS NOT NULL THEN 'sold' ELSE 'available' END AS status,
     COALESCE(qs.segment, '4. Bottom 25%') AS segment,
+    asl.style,
     v.nb_views_total,
     COALESCE(w.nb_wishlist_events, 0)      AS nb_wishlist_events,
     COALESCE(c.nb_clicks, 0)               AS nb_clicks,
@@ -142,6 +146,7 @@ artwork_metrics AS (
 SELECT
   status,
   segment,
+  style,
   COUNT(*)                                                           AS nb_artworks,
   -- Wishlist / Views
   ROUND(AVG(wishlist_per_view), 4)                                   AS avg_wishlist_per_view,
@@ -153,5 +158,5 @@ SELECT
   ROUND(AVG(add_to_cart_per_view), 4)                                AS avg_add_to_cart_per_view,
   ROUND(APPROX_QUANTILES(add_to_cart_per_view, 2)[OFFSET(1)], 4)    AS median_add_to_cart_per_view
 FROM artwork_metrics
-GROUP BY 1, 2
-ORDER BY 1, 2
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, 3

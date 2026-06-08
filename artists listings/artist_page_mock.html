@@ -142,6 +142,16 @@
       color: #c8a96e;
     }
 
+    .card .art-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #333;
+      margin-top: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .card .price {
       font-size: 13px;
       color: #555;
@@ -314,6 +324,7 @@
       name:    idx('artist_name'),
       id:      idx('artist_id'),
       artId:   idx('available_artwork_id'),
+      title:   idx('artwork_title'),
       medium:  idx('medium'),
       price:   idx('price_eur'),
       views:   idx('nb_views_L30days'),
@@ -331,6 +342,7 @@
         artistName: cols[I.name],
         artistId:   cols[I.id],
         artId,
+        title:      I.title >= 0 ? (cols[I.title] || '').trim() : '',
         price:      parseFloat(cols[I.price])  || 0,
         views:      parseFloat(cols[I.views])  || 0,
         score:      parseFloat(cols[I.score])  || 0,
@@ -560,7 +572,8 @@
               <span class="score-value">${aw.score.toFixed(0)}</span>
             </div>
             <div class="bar-wrap"><div class="bar" style="width:${barW}%"></div></div>
-            <div class="price" style="margin-top:8px">€${aw.price.toLocaleString()}</div>
+            ${aw.title ? `<div class="art-title" title="${aw.title}">${aw.title}</div>` : ''}
+            <div class="price" style="margin-top:4px">€${aw.price.toLocaleString()}</div>
             <div class="views">${aw.views} views (L30d)</div>
             ${medLabel}
           </div>

@@ -32,6 +32,7 @@ similarity_computations as (
   select
     artists.artist_name,
     artists.artist_id,
+    available.title as available_artwork_title,
     available_artwork_id,
     available.price_eur,
     available.picture,
@@ -50,6 +51,8 @@ similarity_computations as (
   left join `singulart-data.connected_sheets.all_artworks` sold on sold.artwork_id = temp.sold_artwork_id
   left join sales_per_artist on sales_per_artist.artist_id = available.artist_id
   where current_plan_level is not null
+    and available.is_hiearchically_online = 1
+    and available.available_for_purchase = 1
     and available_artwork_id <> sold_artwork_id
     and available.medium = sold.medium
     and exists (
@@ -58,13 +61,14 @@ similarity_computations as (
       inner join unnest(split(sold.styles, ',')) as sold_cat on avail_cat = sold_cat
     )
     and (sales_per_artist.nb_sales < 3 or last_sale_at is null)
-  group by 1, 2, 3, 4, 5, 6
+  group by 1, 2, 3, 4, 5, 6, 7
 )
 
 select
   sc.artist_name,
   sc.artist_id,
   sc.available_artwork_id,
+  sc.available_artwork_title as title,
   sc.medium,
   sc.price_eur,
   nb_views as nb_views_L30days,

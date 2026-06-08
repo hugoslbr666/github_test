@@ -17,6 +17,7 @@ similarity_computations AS (
     artists.artist_name,
     artists.artist_id,
     available_artwork_id,
+    available.title AS available_artwork_title,
     available.price_eur,
     available.picture,
     available.medium,
@@ -32,15 +33,19 @@ similarity_computations AS (
   LEFT JOIN `singulart-data.connected_sheets.all_artworks` sold       ON sold.artwork_id       = temp.sold_artwork_id
   LEFT JOIN `singulart-data.connected_sheets.all_artists`  artists    ON artists.artist_id     = available.artist_id
   WHERE available_artwork_id <> sold_artwork_id
+    AND available.medium = sold.medium
+    AND available.is_hiearchically_online = 1
+    AND available.available_for_purchase = 1
     AND available.artist_id = sold.artist_id
     AND artists.last_sale_at IS NOT NULL
-  GROUP BY 1, 2, 3, 4, 5, 6
+  GROUP BY 1, 2, 3, 4, 5, 6, 7
 )
 
 SELECT
   sc.artist_name,
   sc.artist_id,
   sc.available_artwork_id,
+  sc.available_artwork_title,
   sc.medium,
   sc.price_eur,
   COALESCE(v.nb_views, 0)                                                                                  AS nb_views_L30days,
