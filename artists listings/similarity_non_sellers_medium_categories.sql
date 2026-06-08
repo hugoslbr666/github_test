@@ -68,7 +68,7 @@ select
   sc.artist_name,
   sc.artist_id,
   sc.available_artwork_id,
-  sc.available_artwork_title as title,
+  sc.available_artwork_title as artwork_title,
   sc.medium,
   sc.price_eur,
   nb_views as nb_views_L30days,

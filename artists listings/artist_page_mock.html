@@ -51,15 +51,47 @@
       cursor: pointer;
     }
 
-    select {
+    .artist-search {
+      position: relative;
+      min-width: 280px;
+    }
+    #artistInput {
       font-size: 14px;
       padding: 8px 12px;
       border: 1px solid #ddd;
       border-radius: 4px;
       background: #fff;
-      min-width: 260px;
-      cursor: pointer;
+      width: 100%;
+      outline: none;
     }
+    #artistInput:focus { border-color: #c8a96e; }
+    #artistInput:disabled { color: #aaa; background: #fafafa; }
+    #artistDropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 2px);
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      max-height: 260px;
+      overflow-y: auto;
+      z-index: 999;
+      list-style: none;
+      margin: 0;
+      padding: 4px 0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+    }
+    #artistDropdown li {
+      padding: 7px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #artistDropdown li:hover, #artistDropdown li.active { background: #f5f0e8; }
 
     .status {
       font-size: 12px;
@@ -146,7 +178,8 @@
       font-size: 12px;
       font-weight: 600;
       color: #333;
-      margin-top: 8px;
+      margin-top: 4px;
+      margin-bottom: 4px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -245,6 +278,22 @@
     }
     .med-toggle:hover { border-color: #7c5cbf; color: #7c5cbf; }
     .med-toggle.active { background: #7c5cbf; border-color: #7c5cbf; color: #fff; font-weight: 600; }
+    .cluster-counts {
+      width: 100%;
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .cluster-counts .cc-chip {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      background: #f3f3f1;
+      color: #555;
+      white-space: nowrap;
+    }
+    .cluster-counts .cc-chip strong { font-weight: 700; margin-right: 3px; }
 
     /* ── Cluster badge on card ── */
     .cluster-badge {
@@ -254,6 +303,7 @@
     }
     .cluster-badge.q1 { background: #c8a96e; }
     .cluster-badge.q2 { background: #5b9bd5; }
+    .cluster-badge.q3 { background: #7fc97f; }
     .medium-label {
       display: inline-block; margin-top: 4px;
       font-size: 10px; color: #fff;
@@ -280,9 +330,10 @@
   <label>1. Load CSV</label>
   <input type="file" id="csvFile" accept=".csv" />
   <label>2. Select artist</label>
-  <select id="artistSelect" disabled>
-    <option value="">— load CSV first —</option>
-  </select>
+  <div class="artist-search" id="artistSearch">
+    <input type="text" id="artistInput" placeholder="— load CSV first —" disabled autocomplete="off" />
+    <ul id="artistDropdown"></ul>
+  </div>
   <span class="status" id="status"></span>
 </div>
 
@@ -306,7 +357,8 @@
   <span class="cluster-chip q2">Q2 — less similar</span>
   <span class="mix-info" id="mixInfo"></span>
   <div class="divider"></div>
-  <button class="med-toggle" id="medToggle">Medium diversity: OFF</button>
+  <button class="med-toggle active" id="medToggle">Medium diversity: ON</button>
+  <div class="cluster-counts" id="clusterCounts"></div>
 </div>
 
 <div id="app">
@@ -371,7 +423,7 @@
   let artistMeta   = {};   // name -> { priceDiversity }
   let activePrice  = 'all';
   let mixPct        = 70;   // % from Q1 (most similar)
-  let mediumDiv     = false; // medium diversity toggle
+  let mediumDiv     = true;  // medium diversity toggle
 
   // ── File load ───────────────────────────────────────────────────────────────
   document.getElementById('csvFile').addEventListener('change', function(e) {
@@ -406,28 +458,91 @@
     reader.readAsText(file);
   });
 
-  // ── Populate dropdown ────────────────────────────────────────────────────────
+  // ── Artist autocomplete ──────────────────────────────────────────────────────
+  let allArtistNames = [];   // full sorted list (by artwork count)
+  let selectedArtist = '';   // currently active artist name
+  let activeIdx      = -1;   // keyboard navigation index
+
+  const artistInput    = document.getElementById('artistInput');
+  const artistDropdown = document.getElementById('artistDropdown');
+
+  function getFilteredNames(query) {
+    const q = query.trim().toLowerCase();
+    return allArtistNames
+      .filter(name => activePrice === 'all' || artistMeta[name].priceDiversity === activePrice)
+      .filter(name => !q || name.toLowerCase().includes(q));
+  }
+
+  function renderDropdown(names) {
+    activeIdx = -1;
+    if (!names.length) { artistDropdown.style.display = 'none'; return; }
+    artistDropdown.innerHTML = names.map(name =>
+      `<li data-name="${name.replace(/"/g,'&quot;')}">${name} <span style="color:#bbb;font-size:11px">(${byArtist[name].length})</span></li>`
+    ).join('');
+    artistDropdown.style.display = 'block';
+  }
+
+  function selectArtist(name) {
+    selectedArtist = name;
+    artistInput.value = name;
+    artistDropdown.style.display = 'none';
+    if (name) renderArtist(name);
+  }
+
   function populateDropdown() {
-    const sel = document.getElementById('artistSelect');
-    const filtered = Object.keys(byArtist)
+    allArtistNames = Object.keys(byArtist)
       .filter(name => activePrice === 'all' || artistMeta[name].priceDiversity === activePrice)
       .sort((a, b) => byArtist[b].length - byArtist[a].length);
 
-    sel.innerHTML = '<option value="">— select an artist —</option>';
-    filtered.forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = `${name} (${byArtist[name].length} artworks)`;
-      sel.appendChild(opt);
-    });
-    sel.disabled = false;
-    document.getElementById('filterCount').textContent = `${filtered.length} artists shown`;
+    artistInput.disabled = false;
+    artistInput.placeholder = 'Type an artist name…';
+    document.getElementById('filterCount').textContent = `${allArtistNames.length} artists`;
 
-    if (sel.value && !filtered.includes(sel.value)) {
-      sel.value = '';
+    if (selectedArtist && !allArtistNames.includes(selectedArtist)) {
+      selectedArtist = '';
+      artistInput.value = '';
       document.getElementById('app').innerHTML = '<div class="empty">Select an artist.</div>';
     }
   }
+
+  artistInput.addEventListener('input', function() {
+    renderDropdown(getFilteredNames(this.value));
+  });
+
+  artistInput.addEventListener('focus', function() {
+    if (allArtistNames.length) renderDropdown(getFilteredNames(this.value));
+  });
+
+  artistInput.addEventListener('keydown', function(e) {
+    const items = artistDropdown.querySelectorAll('li');
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, items.length - 1);
+      items.forEach((li, i) => li.classList.toggle('active', i === activeIdx));
+      items[activeIdx]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      items.forEach((li, i) => li.classList.toggle('active', i === activeIdx));
+      items[activeIdx]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const active = artistDropdown.querySelector('li.active') || items[0];
+      if (active) selectArtist(active.dataset.name);
+    } else if (e.key === 'Escape') {
+      artistDropdown.style.display = 'none';
+    }
+  });
+
+  artistDropdown.addEventListener('mousedown', function(e) {
+    const li = e.target.closest('li');
+    if (li) selectArtist(li.dataset.name);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#artistSearch')) artistDropdown.style.display = 'none';
+  });
 
   // ── Price filter toggle ───────────────────────────────────────────────────────
   document.getElementById('priceFilter').addEventListener('click', function(e) {
@@ -445,8 +560,7 @@
     this.style.setProperty('--pct', mixPct + '%');
     document.getElementById('q1Pct').textContent = mixPct + '%';
     document.getElementById('q2Pct').textContent = (100 - mixPct) + '%';
-    const name = document.getElementById('artistSelect').value;
-    if (name) renderArtist(name);
+    if (selectedArtist) renderArtist(selectedArtist);
   });
 
   // ── Medium diversity toggle ──────────────────────────────────────────────────
@@ -454,18 +568,7 @@
     mediumDiv = !mediumDiv;
     this.textContent = `Medium diversity: ${mediumDiv ? 'ON' : 'OFF'}`;
     this.classList.toggle('active', mediumDiv);
-    const name = document.getElementById('artistSelect').value;
-    if (name) renderArtist(name);
-  });
-
-  // ── Artist select ────────────────────────────────────────────────────────────
-  document.getElementById('artistSelect').addEventListener('change', function(e) {
-    const name = e.target.value;
-    if (!name) {
-      document.getElementById('app').innerHTML = '<div class="empty">Select an artist.</div>';
-      return;
-    }
-    renderArtist(name);
+    if (selectedArtist) renderArtist(selectedArtist);
   });
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -491,9 +594,10 @@
     const qSize = Math.ceil(total / 5);
     const q1Ids = new Set(sorted.slice(0, qSize).map(a => a.artId));
     const q2Ids = new Set(sorted.slice(qSize, 2 * qSize).map(a => a.artId));
+    const q3Ids = new Set(sorted.slice(2 * qSize, 3 * qSize).map(a => a.artId));
     return pool.map(a => ({
       ...a,
-      cluster: q1Ids.has(a.artId) ? 1 : q2Ids.has(a.artId) ? 2 : null,
+      cluster: q1Ids.has(a.artId) ? 1 : q2Ids.has(a.artId) ? 2 : q3Ids.has(a.artId) ? 3 : null,
     }));
   }
 
@@ -508,6 +612,7 @@
       const qSize  = Math.ceil(sorted.length / 5);
       const q1Pool = sorted.slice(0, qSize).map(a => ({ ...a, cluster: 1 }));
       const q2Pool = sorted.slice(qSize, 2 * qSize).map(a => ({ ...a, cluster: 2 }));
+      const q3Pool = sorted.slice(2 * qSize, 3 * qSize).map(a => ({ ...a, cluster: 3 }));
       const wantQ1 = Math.round(total * mixPct / 100);
       const wantQ2 = total - wantQ1;
       const fromQ1 = q1Pool.slice(0, wantQ1);
@@ -518,11 +623,24 @@
         `${fromQ1.length} Q1${fromQ1.length < wantQ1 ? ' ⚠ not enough' : ''} · ${fromQ2.length} Q2${fromQ2.length < wantQ2 ? ' ⚠ not enough' : ''}`;
 
     } else {
-      // ── Medium diversity: strict round-robin across top 2 mediums ────────────
+      // ── Medium diversity: Q1/Q2 mix within each medium, then round-robin ─────
       const medCounts = {};
       sorted.forEach(a => medCounts[a.medium] = (medCounts[a.medium] || 0) + 1);
-      const topMeds  = Object.entries(medCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(e => e[0]);
-      const med1Pool = applyClusterLabels(sorted, sorted.filter(a => a.medium === topMeds[0]));
+      const topMeds = Object.entries(medCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(e => e[0]);
+
+      // Build a Q1/Q2-mixed ordered sequence for a given medium pool
+      function buildMedPool(mediumArtworks) {
+        const labeled = applyClusterLabels(sorted, mediumArtworks);
+        const q1 = labeled.filter(a => a.cluster === 1);
+        const q2 = labeled.filter(a => a.cluster === 2);
+        const rest = labeled.filter(a => a.cluster !== 1 && a.cluster !== 2);
+        const slots = labeled.length;
+        const wantQ1 = Math.round(slots * mixPct / 100);
+        const wantQ2 = slots - wantQ1;
+        return interleave(q1.slice(0, wantQ1), [...q2.slice(0, wantQ2), ...rest].slice(0, wantQ2));
+      }
+
+      const med1Pool = buildMedPool(sorted.filter(a => a.medium === topMeds[0]));
       const med2Pool = applyClusterLabels(sorted, sorted.filter(a => a.medium === topMeds[1]));
 
       // Alternate: best med1, best med2, 2nd med1, 2nd med2 … until 25 slots filled
@@ -539,6 +657,23 @@
       subtitleExtra = `<span style="color:#7c5cbf;font-weight:600">${i1} ${topMeds[0] || '—'}</span> + <span style="color:#7c5cbf;font-weight:600;opacity:.7">${i2} ${topMeds[1] || '—'}</span> · alternating`;
       document.getElementById('mixInfo').textContent =
         `${i1} ${topMeds[0]} · ${i2} ${topMeds[1] || 'n/a'} · round-robin`;
+    }
+
+    // ── Cluster counts from currently displayed artworks (medium diversity only) ─
+    const ccEl = document.getElementById('clusterCounts');
+    if (mediumDiv) {
+      const nQ1 = artworks.filter(a => a.cluster === 1).length;
+      const nQ2 = artworks.filter(a => a.cluster === 2).length;
+      const nOther = artworks.length - nQ1 - nQ2;
+      ccEl.innerHTML = [
+        `<span class="cc-chip"><strong style="color:#c8a96e">Q1</strong>${nQ1} artworks</span>`,
+        `<span class="cc-chip"><strong style="color:#5b9bd5">Q2</strong>${nQ2} artworks</span>`,
+        nOther > 0 ? `<span class="cc-chip"><strong style="color:#b0b0b0">Q3+</strong>${nOther} artworks</span>` : '',
+      ].join('');
+      ccEl.style.display = 'flex';
+    } else {
+      ccEl.innerHTML = '';
+      ccEl.style.display = 'none';
     }
 
     const maxScore = sorted[0]?.score || 1;
@@ -571,8 +706,8 @@
               <span class="score-label">Similarity score</span>
               <span class="score-value">${aw.score.toFixed(0)}</span>
             </div>
+            <div class="art-title" title="${aw.title || ''}">${aw.title || '—'}</div>
             <div class="bar-wrap"><div class="bar" style="width:${barW}%"></div></div>
-            ${aw.title ? `<div class="art-title" title="${aw.title}">${aw.title}</div>` : ''}
             <div class="price" style="margin-top:4px">€${aw.price.toLocaleString()}</div>
             <div class="views">${aw.views} views (L30d)</div>
             ${medLabel}

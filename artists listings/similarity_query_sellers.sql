@@ -45,7 +45,7 @@ SELECT
   sc.artist_name,
   sc.artist_id,
   sc.available_artwork_id,
-  sc.available_artwork_title,
+  sc.available_artwork_title AS artwork_title,
   sc.medium,
   sc.price_eur,
   COALESCE(v.nb_views, 0)                                                                                  AS nb_views_L30days,
