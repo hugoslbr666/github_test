@@ -54,8 +54,8 @@ similarity_computations as (
     and available.medium = sold.medium
     and exists (
       select 1
-      from unnest(split(available.categories, ',')) as avail_cat
-      inner join unnest(split(sold.categories, ',')) as sold_cat on avail_cat = sold_cat
+      from unnest(split(available.styles, ',')) as avail_cat
+      inner join unnest(split(sold.styles, ',')) as sold_cat on avail_cat = sold_cat
     )
     and (sales_per_artist.nb_sales < 3 or last_sale_at is null)
   group by 1, 2, 3, 4, 5, 6

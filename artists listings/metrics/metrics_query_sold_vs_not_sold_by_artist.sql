@@ -6,6 +6,15 @@ buyers_list AS (
   WHERE first_order_at IS NOT NULL
 ),
 
+sold_artwork_dates AS (
+  SELECT
+    artwork_id,
+    MIN(paid_at) AS paid_at
+  FROM `singulart-data.connected_sheets.all_sales`
+  WHERE paid_at >= DATE_SUB(CURRENT_DATE, INTERVAL 6 MONTH)
+  GROUP BY artwork_id
+),
+
 bv_per_artist AS (
   SELECT
     a_a.artist_id,
@@ -66,8 +75,10 @@ views AS (
   INNER JOIN `singulart-data.connected_sheets.all_artworks` aa  ON aa.artwork_id = SAFE_CAST(i.item_id AS INT64)
   INNER JOIN `singulart-data.connected_sheets.all_artists` a_a  ON a_a.artist_id = aa.artist_id
   INNER JOIN buyers_list bl ON bl.visitor_id = ge.visitor_id
+  LEFT JOIN sold_artwork_dates sad ON sad.artwork_id = aa.artwork_id
   WHERE event_date >= DATE_SUB(CURRENT_DATE, INTERVAL 12 MONTH)
     AND ge.event_name = 'view_item_list'
+    AND (sad.paid_at IS NULL OR ge.event_date < sad.paid_at)
   GROUP BY 1
 ),
 
@@ -78,30 +89,36 @@ clicks AS (
   FROM `singulart-data.views.all_pageviews` pv
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_tracking_visitors_sessions` s ON s.id = pv.session_id
   INNER JOIN buyers_list bl ON bl.visitor_id = s.visitor_id
+  LEFT JOIN sold_artwork_dates sad ON sad.artwork_id = SAFE_CAST(pv.object_id AS INT64)
   WHERE pv.tpl = 'artwork'
     AND pv.created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 12 MONTH)
+    AND (sad.paid_at IS NULL OR pv.created_at < sad.paid_at)
   GROUP BY 1
 ),
 
 wishlists AS (
   SELECT
-    artwork_id,
+    wishlist.artwork_id,
     COUNT(DISTINCT wishlist_id) AS nb_wishlist_events
   FROM `singulart-data.connected_sheets.all_wishlists` wishlist
   INNER JOIN buyers_list bl ON bl.visitor_id = wishlist.visitor_id
+  LEFT JOIN sold_artwork_dates sad ON sad.artwork_id = wishlist.artwork_id
   WHERE wishlist_created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 12 MONTH)
+    AND (sad.paid_at IS NULL OR wishlist.wishlist_created_at < sad.paid_at)
   GROUP BY 1
 ),
 
 add_to_cart AS (
   SELECT
-    artwork_id,
-    COUNT(DISTINCT cart_id) AS nb_add_to_cart_events
+    scl.artwork_id,
+    COUNT(DISTINCT scl.cart_id) AS nb_add_to_cart_events
   FROM `singulart-db-to-bigquery.singulartdb.sgt_carts_lines` scl
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_carts` sc ON sc.id = scl.cart_id
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_tracking_visitors_sessions` s ON s.id = sc.browsing_session_id
   INNER JOIN buyers_list bl ON bl.visitor_id = s.visitor_id
+  LEFT JOIN sold_artwork_dates sad ON sad.artwork_id = scl.artwork_id
   WHERE sc.created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 12 MONTH)
+    AND (sad.paid_at IS NULL OR sc.created_at < sad.paid_at)
   GROUP BY 1
 ),
 
