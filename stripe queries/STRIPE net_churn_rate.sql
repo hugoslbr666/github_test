@@ -1,20 +1,28 @@
 WITH
 
+sellers AS (
+  SELECT DISTINCT artist_id
+  FROM `singulart-data.connected_sheets.all_sales`
+  WHERE artwork_id IS NOT NULL
+),
+
 artists_plans AS (
   SELECT
-    stripe_subscription_id,
-    artist_id,
-    stripe_customer_id,
-    level,
-    frequency,
-    started_at,
-    ended_at,
-    current_period_start,
-    current_period_end,
-    created_at,
-    updated_at,
-    row_number() over(partition by artist_id order by created_at asc) as subscription_asc
-  FROM `singulart-db-to-bigquery.singulartdb.sgt_artists_plans`
+    ap.stripe_subscription_id,
+    ap.artist_id,
+    ap.stripe_customer_id,
+    ap.level,
+    ap.frequency,
+    ap.started_at,
+    ap.ended_at,
+    ap.current_period_start,
+    ap.current_period_end,
+    ap.created_at,
+    ap.updated_at,
+    row_number() over(partition by ap.artist_id order by ap.created_at asc) as subscription_asc,
+    CASE WHEN s.artist_id IS NOT NULL THEN 'Seller' ELSE 'Non-seller' END AS seller_type
+  FROM `singulart-db-to-bigquery.singulartdb.sgt_artists_plans` ap
+  LEFT JOIN sellers s ON s.artist_id = ap.artist_id
 ),
 
 ts_grouped_sub_item_events AS (
@@ -26,12 +34,13 @@ ts_grouped_sub_item_events AS (
     ap.level,
     ap.frequency,
     CASE WHEN ap.subscription_asc = 1 THEN 'New' ELSE 'Winback' END AS artist_type,
+    ap.seller_type,
     sum(mrr_change) AS mrr_change
   FROM
     `singulart-data.stripe.subscription_item_change_events`
   LEFT JOIN artists_plans ap ON ap.stripe_subscription_id = subscription_id
   GROUP BY
-    1, 2, 3, 4, 5, 6, 7
+    1, 2, 3, 4, 5, 6, 7, 8
 ),
 ts_grouped_sub_item_events_with_mrr AS (
   SELECT
@@ -93,6 +102,7 @@ date_grouped_customer_events AS (
     level,
     artist_type,
     frequency,
+    seller_type,
     SUM(mrr_change*cr.rate) AS mrr_change,
     SUM(
       CASE
@@ -133,7 +143,7 @@ date_grouped_customer_events AS (
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_currencies` sc ON UPPER(sc.currency) = UPPER(customer_events.currency)
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_currencies_rates` cr ON cr.base_id = sc.id AND cr.target_id = 43
   GROUP BY
-    1, 2, 3, 4, 5
+    1, 2, 3, 4, 5, 6
 ),
 daily_metrics AS (
   SELECT
@@ -141,7 +151,8 @@ daily_metrics AS (
     level,
     artist_type,
     frequency,
-    SUM(SUM(mrr_change)) OVER (PARTITION BY level, artist_type, frequency ORDER BY local_event_date ASC) AS mrr,
+    seller_type,
+    SUM(SUM(mrr_change)) OVER (PARTITION BY level, artist_type, frequency, seller_type ORDER BY local_event_date ASC) AS mrr,
     SUM(mrr_change) AS mrr_change,
     SUM(new_mrr) AS new_mrr,
     SUM(reactivation_mrr) AS reactivation_mrr,
@@ -151,13 +162,13 @@ daily_metrics AS (
   FROM
     date_grouped_customer_events
   GROUP BY
-    1, 2, 3, 4
+    1, 2, 3, 4, 5
 ),
 daily_metrics_with_derived AS (
   SELECT
     *,
     COALESCE(
-      LAG(mrr, 30) OVER (PARTITION BY level, artist_type, frequency ORDER BY local_date),
+      LAG(mrr, 30) OVER (PARTITION BY level, artist_type, frequency, seller_type ORDER BY local_date),
       0
     ) AS previous_month_mrr
   FROM
@@ -167,7 +178,7 @@ daily_metrics_with_net AS (
   SELECT
     *,
     SUM(ABS(contraction_mrr + churn_mrr) - (expansion_mrr + reactivation_mrr)) OVER (
-      PARTITION BY level, artist_type, frequency
+      PARTITION BY level, artist_type, frequency, seller_type
       ORDER BY local_date
       ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
     ) AS net_mrr_churn
