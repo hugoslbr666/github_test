@@ -16,7 +16,8 @@ sold_artworks AS (
   FROM `singulart-data.connected_sheets.all_artworks` aa
   INNER JOIN `singulart-data.connected_sheets.all_sales` a_s ON a_s.artwork_id = aa.artwork_id
   WHERE a_s.paid_at >= DATE_SUB(CURRENT_DATE, INTERVAL 12 MONTH)
-    AND aa.artwork_online_at IS NOT NULL
+    AND aa.artwork_online_at < a_s.paid_at
+    AND DATE(aa.artwork_online_at) >= DATE_SUB(CURRENT_DATE, INTERVAL 24 MONTH)
     AND DATE_DIFF(DATE(a_s.paid_at), DATE(aa.artwork_online_at), DAY) >= 90
 ),
 
@@ -30,7 +31,7 @@ unsold_artworks AS (
     'available'                AS status
   FROM `singulart-data.connected_sheets.all_artworks` aa
   LEFT JOIN `singulart-data.connected_sheets.all_sales` a_s ON a_s.artwork_id = aa.artwork_id
-  WHERE aa.is_hiearchically_online = 1
+  WHERE aa.is_hiearchically_online = 1 and paid_at is null
     AND aa.artwork_online_at IS NOT NULL
     AND DATE_DIFF(CURRENT_DATE, DATE(aa.artwork_online_at), DAY) >= 90
     AND DATE(aa.artwork_online_at) >= DATE_SUB(CURRENT_DATE, INTERVAL 24 MONTH)
@@ -52,6 +53,7 @@ raw_events AS (
   CROSS JOIN UNNEST(items) i
   INNER JOIN buyers_list bl ON bl.visitor_id = ge.visitor_id
   WHERE ge.event_name = 'view_item_list'
+    AND i.item_list_name in ('ap','ap-l')
     AND ge.event_date >= DATE_SUB(CURRENT_DATE, INTERVAL 12 MONTH)
 
   UNION ALL
