@@ -80,8 +80,7 @@ all_subs as (
     date(sub.created) as sub_created
   from `singulart-data.stripe.subscriptions` sub
   inner join sgt_artists_plans sap on sap.stripe_subscription_id = sub.id
-  inner join `singulart-data.connected_sheets.all_artists` aa on aa.artist_id = sap.artist_id
-  where sap.artist_id is not null and aa.online >= '2025-01-01'
+  where sap.artist_id is not null
   qualify row_number() over(partition by sub.id order by sub.batch_timestamp desc) = 1
 ),
 

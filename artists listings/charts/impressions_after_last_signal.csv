@@ -1,0 +1,12 @@
+status,impressions_after_last_signal,nb_artworks,pct_of_status,cumulative_pct
+available,01. 0 impressions,8164,0.052,0.052
+available,02. 1-50 impressions,115242,0.7336,0.7855
+available,03. 51-100 impressions,22691,0.1444,0.93
+available,04. 101-200 impressions,9049,0.0576,0.9876
+available,05. 201-300 impressions,1390,0.0088,0.9964
+available,06. 301-500 impressions,492,0.0031,0.9996
+available,07. 501-1000 impressions,70,0.0004,1.0
+sold,01. 0 impressions,5841,0.9353,0.9353
+sold,02. 1-50 impressions,401,0.0642,0.9995
+sold,03. 51-100 impressions,2,0.0003,0.9998
+sold,04. 101-200 impressions,1,0.0002,1.0
