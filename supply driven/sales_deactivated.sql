@@ -24,6 +24,7 @@ SELECT
   max_end_date,
   aa.updated_at,
   sale_id,
+  full_name,
   any_value(sa.purchaseEurAmountWithShipping) AS BV_first_click
 FROM `singulart-data.connected_sheets.sales_attribution` sa
 INNER JOIN `singulart-data.connected_sheets.all_artists` aa
