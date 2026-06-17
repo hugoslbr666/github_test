@@ -25,7 +25,8 @@ WITH entry_sessions AS (
     LEFT JOIN `singulart-data.views.campaigns` c
         ON c.campaign_id = stvs.tracking_campaign_id
     WHERE sr.landing_tpl LIKE '%artist%'
-       OR sr.landing_tpl LIKE '%artwork%'
+       --OR sr.landing_tpl LIKE '%artwork%'
+
 
 ),
 
@@ -79,9 +80,7 @@ session_bv AS (
 SELECT
     sb.artist_id,
     aa.artist_name,
-
     COUNT(DISTINCT sb.session_id)                                   AS entry_sessions,
-
     COUNT(DISTINCT IF(
         sb.channel IN ('NON_BRAND_GOOGLE', 'BRAND_GOOGLE', 'DIRECT_ACCESS', 'FACEBOOK')
         OR sb.channel LIKE '%VIRAL%',
@@ -90,9 +89,7 @@ SELECT
     ))                                                              AS entry_sessions_organic_direct,
 
     SUM(sb.bv)                                                      AS entry_BV
-
 FROM session_bv sb
 LEFT JOIN `singulart-data.connected_sheets.all_artists` aa USING (artist_id)
-
 GROUP BY 1, 2
 ORDER BY entry_sessions DESC
