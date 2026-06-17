@@ -2,7 +2,7 @@ WITH plans AS (
   SELECT
     artist_id,
     DATE(MIN(started_at)) AS min_start_date,
-    DATE(MAX(ended_at))   AS max_end_date
+    DATE(MAX(coalesce(ended_at, current_date)))   AS max_end_date
   FROM `singulart-db-to-bigquery.singulartdb.sgt_artists_plans`
   GROUP BY 1
 )
@@ -10,6 +10,7 @@ WITH plans AS (
 SELECT
   DATE(DATE_TRUNC(sa.paid_at, MONTH)) AS year_month,
   aa.artist_id,
+  aa.artist_name,
   CASE
     WHEN is_deactivated = 1 AND aa.updated_at <  sa.paid_at THEN 'deactivated'
     WHEN is_deactivated = 1 AND aa.updated_at >= sa.paid_at THEN 'before_deactivated'
@@ -25,10 +26,10 @@ SELECT
   aa.updated_at,
   sale_id,
   full_name,
+  case when cast(sa.artist_id as int64) = cast(email_1st_click_landing_object_id as INT64) then 1 else 0 end same_artist_bv,
   any_value(sa.purchaseEurAmountWithShipping) AS BV_first_click
 FROM `singulart-data.connected_sheets.sales_attribution` sa
-INNER JOIN `singulart-data.connected_sheets.all_artists` aa
-  ON SAFE_CAST(aa.artist_id AS STRING) = sa.email_1st_click_landing_object_id
+INNER JOIN `singulart-data.connected_sheets.all_artists` aa ON SAFE_CAST(aa.artist_id AS STRING) = sa.email_1st_click_landing_object_id
 LEFT JOIN plans
   ON plans.artist_id = aa.artist_id
 WHERE sa.email_1st_click_campaign_name = "TEMPLATE ARTIST"
