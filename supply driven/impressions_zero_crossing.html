@@ -1,0 +1,117 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Impressions vs BV (lag +2 months) — Best Sellers</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; background:#f8f9fa; margin:0; padding:24px; }
+  h2   { color:#222; margin-bottom:4px; }
+  .sub { color:#666; font-size:13px; margin-bottom:24px; }
+  .wrap { background:#fff; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.08); padding:24px; max-width:860px; }
+  .stats { display:flex; gap:32px; margin-top:20px; }
+  .stat  { text-align:center; }
+  .stat .val { font-size:22px; font-weight:700; color:#2563eb; }
+  .stat .lbl { font-size:12px; color:#888; margin-top:2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>Listing Impressions → First-Click Template Artist BV (lag +2 months)</h2>
+  <p class="sub">Best sellers · Adwords source · Each point = one month's impressions paired with BV 2 months later</p>
+  <canvas id="chart" height="420"></canvas>
+  <div class="stats">
+    <div class="stat"><div class="val">96,083</div><div class="lbl">Zero-crossing (impressions)</div></div>
+    <div class="stat"><div class="val">r = 0.6732</div><div class="lbl">Pearson correlation at lag 2</div></div>
+    <div class="stat"><div class="val">R² = 0.4532</div><div class="lbl">Variance explained</div></div>
+    <div class="stat"><div class="val">€0.024</div><div class="lbl">EUR per impression (slope)</div></div>
+  </div>
+</div>
+<script>
+const scatter = [{x:66579,y:910,month:"2021-07"},{x:218722,y:3085,month:"2021-08"},{x:441502,y:17098,month:"2021-09"},{x:734019,y:28826,month:"2021-10"},{x:543230,y:3913,month:"2021-11"},{x:336197,y:4942,month:"2021-12"},{x:467476,y:8690,month:"2022-01"},{x:364867,y:1695,month:"2022-02"},{x:316760,y:2167,month:"2022-03"},{x:316094,y:2936,month:"2022-04"},{x:234432,y:4000,month:"2022-05"},{x:144905,y:6115,month:"2022-06"},{x:164925,y:3236,month:"2022-07"},{x:236060,y:2855,month:"2022-08"},{x:251779,y:1040,month:"2022-09"},{x:344483,y:5672,month:"2022-10"},{x:330238,y:5311,month:"2022-11"},{x:261501,y:1250,month:"2022-12"},{x:298421,y:530,month:"2023-01"},{x:309747,y:0,month:"2023-02"},{x:319060,y:3010,month:"2023-03"},{x:235907,y:880,month:"2023-04"},{x:189722,y:2990,month:"2023-05"},{x:127915,y:320,month:"2023-06"},{x:142690,y:1956,month:"2023-07"},{x:184688,y:1664,month:"2023-08"},{x:193324,y:1380,month:"2023-09"},{x:213970,y:850,month:"2023-10"},{x:186481,y:5643,month:"2023-11"},{x:173159,y:598,month:"2023-12"},{x:154722,y:2260,month:"2024-01"},{x:123828,y:5560,month:"2024-02"},{x:138769,y:4435,month:"2024-03"},{x:173243,y:1426,month:"2024-04"},{x:105425,y:5253,month:"2024-05"},{x:81622,y:980,month:"2024-06"},{x:86157,y:2065,month:"2024-07"},{x:124190,y:0,month:"2024-08"},{x:197150,y:399,month:"2024-09"},{x:272422,y:3730,month:"2024-10"},{x:347774,y:6375,month:"2024-11"},{x:351887,y:230,month:"2024-12"},{x:344804,y:5236,month:"2025-01"},{x:297259,y:1940,month:"2025-02"},{x:269615,y:1963,month:"2025-03"},{x:159462,y:0,month:"2025-04"},{x:202853,y:7065,month:"2025-05"},{x:171183,y:630,month:"2025-06"},{x:166934,y:3345,month:"2025-07"},{x:180205,y:940,month:"2025-08"},{x:164656,y:1846,month:"2025-09"},{x:141326,y:287,month:"2025-10"},{x:144212,y:497,month:"2025-11"},{x:139162,y:0,month:"2025-12"},{x:140343,y:0,month:"2026-01"},{x:71837,y:0,month:"2026-02"},{x:38731,y:0,month:"2026-03"},{x:3970,y:0,month:"2026-04"}];
+const slope = 0.02378;
+const intercept = -2285;
+const zeroCrossing = 96083;
+const xMax = 770720;
+
+// Regression line points
+const regLine = [
+  {x: 0,    y: intercept},
+  {x: xMax, y: Math.round(intercept + slope * xMax)}
+];
+
+// Zero crossing vertical marker
+const zeroCrossLine = [
+  {x: zeroCrossing, y: -5000},
+  {x: zeroCrossing, y: Math.round(intercept + slope * zeroCrossing * 1.6)}
+];
+
+new Chart(document.getElementById('chart'), {
+  type: 'scatter',
+  data: {
+    datasets: [
+      {
+        label: 'Month (impressions[T] → BV[T+2])',
+        data: scatter,
+        backgroundColor: 'rgba(37,99,235,0.55)',
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        order: 3
+      },
+      {
+        label: 'Regression line',
+        data: regLine,
+        type: 'line',
+        borderColor: '#dc2626',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+        order: 2
+      },
+      {
+        label: 'Zero crossing (~96k impressions)',
+        data: zeroCrossLine,
+        type: 'line',
+        borderColor: '#16a34a',
+        borderWidth: 2,
+        borderDash: [6,4],
+        pointRadius: 0,
+        fill: false,
+        order: 1
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    interaction: { mode:'nearest', intersect:true },
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            if (ctx.datasetIndex === 0) {
+              const d = ctx.raw;
+              return [ d.month + '  |  ' + d.x.toLocaleString() + ' imp → €' + d.y.toLocaleString() ];
+            }
+            return null;
+          }
+        }
+      },
+      legend: { position:'top' },
+      annotation: {}
+    },
+    scales: {
+      x: {
+        title: { display:true, text:'Impressions (month T)', font:{size:13} },
+        ticks: { callback: v => (v/1000)+'k' }
+      },
+      y: {
+        title: { display:true, text:'First-click Template Artist BV — month T+2 (€)', font:{size:13} },
+        ticks: { callback: v => '€'+v.toLocaleString() },
+        min: -1000
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
