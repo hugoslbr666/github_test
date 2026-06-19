@@ -1,8 +1,8 @@
 artist_id,artist_name,total_results,has_knowledge_panel,wikipedia_in_top5,art_platform_in_top5,instagram_in_top5,error
-3841,Ruslan Khais,0,False,False,True,False,
+3841,Ruslan Khais,2000,False,False,True,False,
 57043,Julian Adrat,6320,False,False,False,False,
 10109,Larissa Abtova,17400,False,False,True,True,
-36501,Pablo Picasso,139,True,True,False,False,
+36501,Pablo Picasso,36400000,True,True,False,False,
 36504,Salvador Dalí,23400000,True,True,False,False,
 3143,Pol Ledent,1170000,False,False,True,True,
 63,Olivier Messas,457000,False,False,True,True,
@@ -36,7 +36,7 @@ artist_id,artist_name,total_results,has_knowledge_panel,wikipedia_in_top5,art_pl
 6865,Holger Mühlbauer-Gardemin,43700,True,False,True,True,
 1973,Kristin Kossi,10500,False,False,True,True,
 1919,Koen Lybaert,107000,True,False,True,True,
-11651,Angie Wright,,,,,,"HTTPSConnectionPool(host='serpapi.com', port=443): Read timed out. (read timeout=15)"
+11651,Angie Wright,2710000,True,False,True,True,
 10927,Tony Belobrajdic,92200,False,False,False,True,
 6223,Silvia Vassileva,1500000,False,False,False,True,
 57146,Ryohei Kubo,3210,False,False,True,True,
@@ -173,7 +173,7 @@ artist_id,artist_name,total_results,has_knowledge_panel,wikipedia_in_top5,art_pl
 26711,Kris Gebhardt,1320000,False,False,True,True,
 10535,Peter Wood,97500,False,False,True,False,
 6613,Barbara Schauß,23800,False,False,True,True,
-2479,Lana Frey,,,,,,"HTTPSConnectionPool(host='serpapi.com', port=443): Read timed out. (read timeout=15)"
+2479,Lana Frey,1080000,False,False,True,True,
 8883,Elena Kraft,36300,False,False,True,True,
 9787,Claudia Barbu,93500,False,False,True,True,
 499,Christiane Guerry,133,False,True,False,False,

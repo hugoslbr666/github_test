@@ -1,0 +1,34 @@
+Points for scatter: 19840
+Pearson r=0.229  R2=0.053  p=9.82e-235  slope=0.0371
+
+High pull + low fame flags: 935
+  Eleanor Johnson                     pull=0.920  google=123  wiki=True  kp=True  bv=EUR0
+  Baek Duri                           pull=0.918  google=1,040  wiki=False  kp=False  bv=EUR0
+  Liu Ke 刘可                           pull=0.846  google=169  wiki=False  kp=False  bv=EUR0
+  Manal Almaimouni                    pull=0.775  google=192  wiki=False  kp=False  bv=EUR0
+  Suzon Magné                         pull=0.741  google=354  wiki=False  kp=False  bv=EUR0
+  Claudia Maria Albiero               pull=0.713  google=1,540  wiki=False  kp=False  bv=EUR0
+  Hisao Dōmoto                        pull=0.711  google=1,520  wiki=False  kp=True  bv=EUR0
+  Sun-kyo Park                        pull=0.706  google=503  wiki=False  kp=False  bv=EUR0
+  Lanny Zenga                         pull=0.685  google=213  wiki=False  kp=False  bv=EUR0
+  Fabrizio Savelli                    pull=0.663  google=681  wiki=True  kp=False  bv=EUR0
+  Eddy Casamín                        pull=0.660  google=406  wiki=False  kp=False  bv=EUR0
+  Yun-Fei Ji 季云飞                      pull=0.659  google=261  wiki=False  kp=True  bv=EUR0
+  Lĩnh Trần Trung                     pull=0.631  google=99  wiki=False  kp=False  bv=EUR0
+  Vasily Ptyukhin                     pull=0.618  google=80  wiki=False  kp=False  bv=EUR0
+  Lana Evanova                        pull=0.610  google=286  wiki=False  kp=False  bv=EUR0
+  A. Ruíz Villar                      pull=0.610  google=1,360  wiki=False  kp=False  bv=EUR0
+  Werner Konings                      pull=0.610  google=263  wiki=False  kp=False  bv=EUR0
+  Taeseon Son                         pull=0.607  google=198  wiki=False  kp=False  bv=EUR0
+  Amena Bandukwala                    pull=0.607  google=1,550  wiki=False  kp=True  bv=EUR0
+  Mj Tom Losotros                     pull=0.597  google=201  wiki=False  kp=False  bv=EUR0
+C:\Users\Hugo Salembier\Documents\singulart\code\Projects\supply driven\claude_project\fame_scatter.py:90: UserWarning: Glyph 21016 (\N{CJK UNIFIED IDEOGRAPH-5218}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\Hugo Salembier\Documents\singulart\code\Projects\supply driven\claude_project\fame_scatter.py:90: UserWarning: Glyph 21487 (\N{CJK UNIFIED IDEOGRAPH-53EF}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\Hugo Salembier\Documents\singulart\code\Projects\supply driven\claude_project\fame_scatter.py:91: UserWarning: Glyph 21016 (\N{CJK UNIFIED IDEOGRAPH-5218}) missing from font(s) DejaVu Sans.
+  plt.savefig('fame_vs_pull_scatter.png', dpi=150)
+C:\Users\Hugo Salembier\Documents\singulart\code\Projects\supply driven\claude_project\fame_scatter.py:91: UserWarning: Glyph 21487 (\N{CJK UNIFIED IDEOGRAPH-53EF}) missing from font(s) DejaVu Sans.
+  plt.savefig('fame_vs_pull_scatter.png', dpi=150)
+
+Saved fame_vs_pull_scatter.png
