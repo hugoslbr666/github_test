@@ -25,7 +25,7 @@ WITH entry_sessions AS (
     LEFT JOIN `singulart-data.views.campaigns` c
         ON c.campaign_id = stvs.tracking_campaign_id
     WHERE sr.landing_tpl LIKE '%artist%'
-       --OR sr.landing_tpl LIKE '%artwork%'
+       OR sr.landing_tpl LIKE '%artwork%'
 
 
 ),
