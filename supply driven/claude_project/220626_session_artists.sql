@@ -145,6 +145,11 @@ artist_pageviews AS (
 SELECT
     aa.artist_id,
     aa.artist_name,
+    CASE
+        WHEN aa.is_blue_chip_artist = 1 THEN 'Blue Chip Artist'
+        WHEN aa.is_grand_artist = 1 THEN 'Grand Artist'
+        ELSE 'Singulart Artist'
+    END as artist_type,
     COALESCE(apv.nb_sessions, 0) as nb_sessions,
     COALESCE(apv.nb_pageviews, 0) as nb_pageviews,
     COALESCE(apv.nb_sessions_first_click, 0) as nb_sessions_first_click,
