@@ -53,7 +53,7 @@ raw_events AS (
   CROSS JOIN UNNEST(items) i
   INNER JOIN buyers_list bl ON bl.visitor_id = ge.visitor_id
   WHERE ge.event_name = 'view_item_list'
-    AND i.item_list_name in ('ap','ap-l')
+    --AND i.item_list_name in ('ap','ap-l')
     AND ge.event_date >= DATE_SUB(CURRENT_DATE, INTERVAL 12 MONTH)
 
   UNION ALL
