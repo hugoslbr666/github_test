@@ -1,3 +1,5 @@
+--all_visitors
+
 WITH
 target_artists AS (
   SELECT artist_id
@@ -25,7 +27,8 @@ target_artworks AS (
   SELECT DISTINCT
     artwork_id,
     artist_id,
-    title
+    title,
+    price_eur
   FROM `singulart-data.connected_sheets.all_artworks`
   WHERE artist_id IN (SELECT artist_id FROM target_artists)
     AND (
@@ -94,6 +97,7 @@ SELECT
     WHEN esa.artwork_id IS NOT NULL THEN 'sold_old'
     ELSE 'available'
   END AS status,
+  price_eur,
   i.nb_impressions,
   COALESCE(atc.nb_add_to_cart, 0)                                             AS nb_add_to_cart,
   COALESCE(wl.nb_wishlist, 0)                                                 AS nb_wishlist,
