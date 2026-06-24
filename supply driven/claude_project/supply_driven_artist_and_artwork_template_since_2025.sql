@@ -34,6 +34,7 @@ WITH artist_pageviews AS (
     LEFT JOIN `singulart-data.views.campaigns` c_first ON c_first.campaign_id = va.first_campaign_id
     WHERE ap.tpl = "artist"
       AND b.visitor_id IS NULL
+      AND ap.created_at BETWEEN '2025-01-01' AND '2026-06-24'
 ),
 
 -- Artwork pageviews CTE
@@ -65,6 +66,7 @@ artwork_pageviews AS (
     LEFT JOIN `singulart-data.views.campaigns` c_first ON c_first.campaign_id = va.first_campaign_id
     WHERE ap.tpl LIKE '%artwork%'
       AND b.visitor_id IS NULL
+      AND ap.created_at BETWEEN '2025-01-01' AND '2026-06-24'
 ),
 
 -- Combined pageviews
@@ -86,6 +88,7 @@ artist_sales_with_attribution AS (
     FROM `singulart-data.connected_sheets.all_sales` s
     LEFT JOIN `singulart-data.connected_sheets.sales_attribution` sa ON sa.sale_id = s.sale_id
     LEFT JOIN `singulart-db-to-bigquery.singulartdb.sgt_tracking_visitors_sessions` stvs ON stvs.id = sa.browsing_session_id
+    WHERE s.paid_at BETWEEN '2025-01-01' AND '2026-06-24'
 ),
 
 -- Categorize artist page sales
@@ -204,4 +207,4 @@ FROM `singulart-data.connected_sheets.all_artists` aa
 LEFT JOIN artist_pageviews_breakdown apb ON apb.artist_id = aa.artist_id
 LEFT JOIN artist_bv_breakdown abb ON abb.artist_sold_id = aa.artist_id
 LEFT JOIN artwork_sales_with_attribution aswa ON aswa.artist_sold_id = aa.artist_id
-ORDER BY artist_total_bv desc
+ORDER BY artist_entry_bv_same_artist DESC
