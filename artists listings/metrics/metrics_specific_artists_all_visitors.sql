@@ -4,12 +4,6 @@ target_artists AS (
   FROM UNNEST([259, 2493, 4545, 11651, 2099, 7037, 14061, 63, 4475, 1973]) AS artist_id
 ),
 
-buyers_list AS (
-  SELECT visitor_id
-  FROM `singulart-data.views.visitor_attribution`
-  WHERE first_order_at IS NOT NULL
-),
-
 sold_artwork_dates AS (
   SELECT
     artwork_id,
@@ -47,7 +41,6 @@ impressions AS (
   FROM `singulart-data.ga_events.ga_events` ge
   CROSS JOIN UNNEST(items) i
   INNER JOIN target_artworks aa ON aa.artwork_id = SAFE_CAST(i.item_id AS INT64)
-  INNER JOIN buyers_list bl ON bl.visitor_id = ge.visitor_id
   LEFT JOIN ever_sold_artworks esa ON esa.artwork_id = aa.artwork_id
   WHERE ge.event_name = 'view_item_list'
     AND (esa.first_sold_at IS NULL OR ge.event_date < esa.first_sold_at)
@@ -61,7 +54,6 @@ add_to_cart AS (
   FROM `singulart-db-to-bigquery.singulartdb.sgt_carts_lines` scl
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_carts` sc ON sc.id = scl.cart_id
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_tracking_visitors_sessions` s ON s.id = sc.browsing_session_id
-  INNER JOIN buyers_list bl ON bl.visitor_id = s.visitor_id
   INNER JOIN target_artworks aa ON aa.artwork_id = scl.artwork_id
   LEFT JOIN ever_sold_artworks esa ON esa.artwork_id = scl.artwork_id
   WHERE (esa.first_sold_at IS NULL OR sc.created_at < esa.first_sold_at)
@@ -73,7 +65,6 @@ wishlists AS (
     w.artwork_id,
     COUNT(DISTINCT w.wishlist_id) AS nb_wishlist
   FROM `singulart-data.connected_sheets.all_wishlists` w
-  INNER JOIN buyers_list bl ON bl.visitor_id = w.visitor_id
   INNER JOIN target_artworks aa ON aa.artwork_id = w.artwork_id
   LEFT JOIN ever_sold_artworks esa ON esa.artwork_id = w.artwork_id
   WHERE (esa.first_sold_at IS NULL OR w.wishlist_created_at < esa.first_sold_at)
@@ -86,7 +77,6 @@ clicks AS (
     COUNT(*) AS nb_clicks
   FROM `singulart-data.views.all_pageviews` pv
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_tracking_visitors_sessions` s ON s.id = pv.session_id
-  INNER JOIN buyers_list bl ON bl.visitor_id = s.visitor_id
   INNER JOIN target_artworks aa ON aa.artwork_id = SAFE_CAST(pv.object_id AS INT64)
   LEFT JOIN ever_sold_artworks esa ON esa.artwork_id = SAFE_CAST(pv.object_id AS INT64)
   WHERE pv.tpl = 'artwork'
