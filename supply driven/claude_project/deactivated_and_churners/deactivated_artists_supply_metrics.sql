@@ -29,6 +29,15 @@ ever_had_paid_sub AS (
   WHERE level != 'selected'
 ),
 
+first_paid_sub AS (
+  SELECT
+    artist_id,
+    MIN(started_at) AS first_paid_sub_started_at
+  FROM `singulart-db-to-bigquery.singulartdb.sgt_artists_plans`
+  WHERE level != 'selected'
+  GROUP BY artist_id
+),
+
 deactivated_artists AS (
   SELECT
     abc.artist_id,
@@ -36,6 +45,7 @@ deactivated_artists AS (
     abc.first_plan_started_at,
     lp.last_plan_level,
     lp.last_plan_ended_at,
+    fps.first_paid_sub_started_at,
     CASE
       WHEN abc.first_plan_level = 'selected' AND eps.artist_id IS NULL
         THEN 'deactivated_selected_no_migration'
@@ -49,6 +59,8 @@ deactivated_artists AS (
     ON abc.artist_id = lp.artist_id
   LEFT JOIN ever_had_paid_sub eps
     ON abc.artist_id = eps.artist_id
+  LEFT JOIN first_paid_sub fps
+    ON abc.artist_id = fps.artist_id
   WHERE lp.last_plan_ended_at IS NOT NULL
     AND lp.last_plan_ended_at < CURRENT_DATE()
 ),
@@ -97,6 +109,14 @@ artist_pageviews AS (
     AND b.visitor_id IS NULL
     AND ap.created_at >= '2024-06-01'
     AND ap.created_at < '2025-03-01'
+    AND (
+      da.deactivated_type = 'deactivated_selected_no_migration'
+      OR (da.deactivated_type = 'deactivated_new_artist_churned'
+          AND ap.created_at >= da.last_plan_ended_at)
+      OR (da.deactivated_type = 'deactivated_selected_migrated_churned'
+          AND (ap.created_at < da.first_paid_sub_started_at
+               OR ap.created_at >= da.last_plan_ended_at))
+    )
 ),
 
 -- Artwork page views — filtered to deactivated artists and the analysis window
@@ -136,6 +156,14 @@ artwork_pageviews AS (
     AND b.visitor_id IS NULL
     AND ap.created_at >= '2024-06-01'
     AND ap.created_at < '2025-03-01'
+    AND (
+      da.deactivated_type = 'deactivated_selected_no_migration'
+      OR (da.deactivated_type = 'deactivated_new_artist_churned'
+          AND ap.created_at >= da.last_plan_ended_at)
+      OR (da.deactivated_type = 'deactivated_selected_migrated_churned'
+          AND (ap.created_at < da.first_paid_sub_started_at
+               OR ap.created_at >= da.last_plan_ended_at))
+    )
 ),
 
 all_pageviews AS (
@@ -162,6 +190,14 @@ artist_sales_with_attribution AS (
     ON stvs.id = sa.browsing_session_id
   WHERE s.paid_at >= '2024-06-01'
     AND s.paid_at < '2025-03-01'
+    AND (
+      da.deactivated_type = 'deactivated_selected_no_migration'
+      OR (da.deactivated_type = 'deactivated_new_artist_churned'
+          AND s.paid_at >= da.last_plan_ended_at)
+      OR (da.deactivated_type = 'deactivated_selected_migrated_churned'
+          AND (s.paid_at < da.first_paid_sub_started_at
+               OR s.paid_at >= da.last_plan_ended_at))
+    )
 ),
 
 artist_sales_categorized AS (
@@ -248,8 +284,7 @@ SELECT
   DATE_DIFF(DATE(da.last_plan_ended_at), DATE(aa.online_at), DAY)             AS days_on_singulart,
   COALESCE(apb.nb_sessions_artist_page, 0)                                    AS nb_sessions_artist_page,
   COALESCE(apb.nb_sessions_artwork_page, 0)                                   AS nb_sessions_artwork_page,
-  COALESCE(apb.nb_sessions_artist_page, 0)
-    + COALESCE(apb.nb_sessions_artwork_page, 0)                               AS nb_sessions_total,
+  COALESCE(apb.nb_sessions_artist_page, 0) + COALESCE(apb.nb_sessions_artwork_page, 0)                               AS nb_sessions_total,
   COALESCE(apb.nb_entry_sessions_artist_campaign, 0)                          AS nb_entry_sessions_artist_campaign,
   COALESCE(apb.nb_entry_sessions_artwork_campaign, 0)                         AS nb_entry_sessions_artwork_campaign,
   COALESCE(apb.nb_entry_sessions_artist_campaign, 0)
@@ -268,4 +303,4 @@ LEFT JOIN artist_bv_breakdown abb
   ON abb.artist_sold_id = da.artist_id
 LEFT JOIN artwork_bv_breakdown awb
   ON awb.artist_sold_id = da.artist_id
-ORDER BY total_bv DESC
+ORDER BY artist_total_bv DESC
