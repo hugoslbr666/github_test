@@ -83,7 +83,11 @@ select
   pac.plan_level as plan_level_at_call,
   pac.frequency as frequency_at_call,
   can.latest_cancellation_date,
-  se.subscription_ended_at
+  if(can.latest_cancellation_date is not null, 1, 0) as canceller,
+  date_diff(can.latest_cancellation_date, ca.create_date, day) as days_to_cancel,
+  se.subscription_ended_at,
+  if(se.subscription_ended_at is not null, 1, 0) as churner,
+  date_diff(se.subscription_ended_at, ca.create_date, day) as days_to_churn
 from calls ca
 left join plan_at_call pac on pac.dealid = ca.dealid
 left join cancellations can on can.dealid = ca.dealid
