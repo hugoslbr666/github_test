@@ -118,6 +118,7 @@ session_navigation AS (
   SELECT
     ap.session_id,
     ap.unique_pageview_id,
+    ap.referer,
     ap.tpl,
     ap.object_id,
     ap.url,
@@ -134,13 +135,16 @@ session_navigation AS (
 
 SELECT
   da.deactivated_type,
-  COALESCE(sn.prev_tpl, 'direct_landing') AS prev_tpl,
+  referer AS page_referer,
+  sn.prev_tpl  AS prev_tpl,
   sn.prev_url,
   COUNT(*)                      AS nb_artist_page_visits,
   COUNT(DISTINCT sn.session_id) AS nb_sessions
 FROM session_navigation sn
 INNER JOIN deactivated_artists da
   ON SAFE_CAST(sn.object_id AS INT64) = da.artist_id
+INNER JOIN `singulart-data.connected_sheets.all_artists` aa
+  ON aa.artist_id = da.artist_id
 WHERE sn.tpl = 'artist'
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
 ORDER BY nb_artist_page_visits DESC
