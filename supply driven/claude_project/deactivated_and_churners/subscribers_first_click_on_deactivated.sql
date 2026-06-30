@@ -93,6 +93,7 @@ LEFT JOIN ever_selected es
 WHERE aa.firstClickLandingTpl = 'artist'
   AND aa.new_artist = 1
   AND es.artist_id IS NULL
+  AND aa.firstClickAt >= '2024-06-01'
   -- The click happened while the landed-on artist was actually deactivated
   AND (
     (
