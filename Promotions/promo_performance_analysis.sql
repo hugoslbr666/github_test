@@ -76,10 +76,34 @@ daily_impressions AS (
       items.discount_value_usd > 0 AND items.coupon = 'singulart_sales',
       CONCAT(ge.new_eventId, '-', items.item_id, '-', items.item_list_index),
       NULL
-    )) AS discounted_impressions
+    )) AS discounted_impressions,
+    -- new buyer: never bought OR session on/before first purchase date
+    COUNT(DISTINCT IF(
+      va.first_order_at IS NULL OR ge.event_date <= DATE(va.first_order_at),
+      CONCAT(ge.new_eventId, '-', items.item_id, '-', items.item_list_index),
+      NULL
+    )) AS total_impressions_new,
+    COUNT(DISTINCT IF(
+      va.first_order_at IS NOT NULL AND ge.event_date > DATE(va.first_order_at),
+      CONCAT(ge.new_eventId, '-', items.item_id, '-', items.item_list_index),
+      NULL
+    )) AS total_impressions_returning,
+    COUNT(DISTINCT IF(
+      items.discount_value_usd > 0 AND items.coupon = 'singulart_sales'
+        AND (va.first_order_at IS NULL OR ge.event_date <= DATE(va.first_order_at)),
+      CONCAT(ge.new_eventId, '-', items.item_id, '-', items.item_list_index),
+      NULL
+    )) AS discounted_impressions_new,
+    COUNT(DISTINCT IF(
+      items.discount_value_usd > 0 AND items.coupon = 'singulart_sales'
+        AND va.first_order_at IS NOT NULL AND ge.event_date > DATE(va.first_order_at),
+      CONCAT(ge.new_eventId, '-', items.item_id, '-', items.item_list_index),
+      NULL
+    )) AS discounted_impressions_returning
   FROM `singulart-data.ga_events.ga_events` ge
   CROSS JOIN UNNEST(items) AS items
   INNER JOIN `singulart-data.reporting.engaged_visitor_ids` ev ON ev.visitor_id = ge.visitor_id
+  LEFT  JOIN `singulart-data.views.visitor_attribution`    va  ON va.visitor_id = ge.visitor_id
   WHERE ge.event_name = 'view_item_list'
     AND ge.event_date >= '2025-01-01'
   GROUP BY 1
@@ -93,12 +117,18 @@ daily_impressions AS (
 daily_clicks AS (
   SELECT
     DATE(ap.created_at) AS date,
-    COUNT(*)            AS nb_artwork_clicks
+    COUNT(*)            AS nb_artwork_clicks,
+    COUNTIF(va.first_order_at IS NULL OR DATE(ap.created_at) <= DATE(va.first_order_at))
+      AS nb_clicks_new,
+    COUNTIF(va.first_order_at IS NOT NULL AND DATE(ap.created_at) > DATE(va.first_order_at))
+      AS nb_clicks_returning
   FROM `singulart-data.views.all_pageviews` ap
   INNER JOIN `singulart-db-to-bigquery.singulartdb.sgt_tracking_visitors_sessions` stvs
     ON stvs.id = ap.session_id
   INNER JOIN `singulart-data.reporting.engaged_visitor_ids` ev
     ON ev.visitor_id = stvs.visitor_id
+  LEFT  JOIN `singulart-data.views.visitor_attribution`    va
+    ON va.visitor_id = stvs.visitor_id
   WHERE ap.tpl = 'artwork'
     AND DATE(ap.created_at) >= '2025-01-01'
   GROUP BY 1
@@ -107,14 +137,25 @@ daily_clicks AS (
 -- ── 4. DAILY SALES & BV ──────────────────────────────────────────────────────
 -- Artwork/piece sales only — excludes framing, addons, commissions.
 -- BV = amount_eur_paid. Restricted to engaged visitors only.
+--
+-- first_order_at from visitors_attribution defines buyer type:
+--   new       = sale date matches first_order_at date (first-ever purchase)
+--   returning = sale date is after first_order_at date
+-- LEFT JOIN so that sales from visitors absent in visitors_attribution are
+-- still counted in units_sold / bv totals, but excluded from the new/returning split.
 
 daily_sales AS (
   SELECT
     DATE(s.paid_at)           AS date,
     COUNT(DISTINCT s.sale_id) AS units_sold,
-    ROUND(SUM(s.amount_eur_paid), 2) AS bv
+    COUNT(DISTINCT IF(DATE(s.paid_at) = DATE(va.first_order_at), s.sale_id, NULL)) AS units_sold_new,
+    COUNT(DISTINCT IF(DATE(s.paid_at) > DATE(va.first_order_at), s.sale_id, NULL)) AS units_sold_returning,
+    ROUND(SUM(s.amount_eur_paid), 2)                                                 AS bv,
+    ROUND(SUM(IF(DATE(s.paid_at) = DATE(va.first_order_at), s.amount_eur_paid, 0)), 2) AS bv_new,
+    ROUND(SUM(IF(DATE(s.paid_at) > DATE(va.first_order_at), s.amount_eur_paid, 0)), 2) AS bv_returning
   FROM `singulart-data.connected_sheets.all_sales` s
   INNER JOIN `singulart-data.reporting.engaged_visitor_ids` ev ON ev.visitor_id = s.visitor_id
+  LEFT  JOIN `singulart-data.views.visitor_attribution`    va  ON va.visitor_id = s.visitor_id
   WHERE s.sale_type = 'artwork/piece'
     AND DATE(s.paid_at) >= '2025-01-01'
   GROUP BY 1
@@ -128,10 +169,20 @@ daily_sales AS (
 daily_sessions AS (
   SELECT
     DATE(stvs.created_at)   AS date,
-    COUNT(DISTINCT stvs.id) AS nb_sessions
+    COUNT(DISTINCT stvs.id) AS nb_sessions,
+    COUNT(DISTINCT IF(
+      va.first_order_at IS NULL OR DATE(stvs.created_at) <= DATE(va.first_order_at),
+      stvs.id, NULL
+    )) AS nb_sessions_new,
+    COUNT(DISTINCT IF(
+      va.first_order_at IS NOT NULL AND DATE(stvs.created_at) > DATE(va.first_order_at),
+      stvs.id, NULL
+    )) AS nb_sessions_returning
   FROM `singulart-db-to-bigquery.singulartdb.sgt_tracking_visitors_sessions` stvs
   INNER JOIN `singulart-data.reporting.engaged_visitor_ids` ev
     ON ev.visitor_id = stvs.visitor_id
+  LEFT  JOIN `singulart-data.views.visitor_attribution`    va
+    ON va.visitor_id = stvs.visitor_id
   WHERE DATE(stvs.created_at) >= '2025-01-01'
   GROUP BY 1
 ),
@@ -151,14 +202,30 @@ promo_daily_metrics AS (
     pc.promo_duration,
     pc.promo_start_date,
     pc.promo_end_date,
-    COALESCE(di.total_impressions, 0)  AS total_impressions,
+    COALESCE(di.total_impressions, 0)             AS total_impressions,
+    COALESCE(di.total_impressions_new, 0)         AS total_impressions_new,
+    COALESCE(di.total_impressions_returning, 0)   AS total_impressions_returning,
     IF(pc.date >= '2026-02-12',
        COALESCE(di.discounted_impressions, 0),
-       NULL)                            AS discounted_impressions,
-    COALESCE(dc.nb_artwork_clicks, 0)  AS nb_artwork_clicks,
-    COALESCE(sess.nb_sessions, 0)      AS nb_sessions,
-    COALESCE(ds.units_sold, 0)         AS units_sold,
-    COALESCE(ds.bv, 0)                 AS bv
+       NULL)                                       AS discounted_impressions,
+    IF(pc.date >= '2026-02-12',
+       COALESCE(di.discounted_impressions_new, 0),
+       NULL)                                       AS discounted_impressions_new,
+    IF(pc.date >= '2026-02-12',
+       COALESCE(di.discounted_impressions_returning, 0),
+       NULL)                                       AS discounted_impressions_returning,
+    COALESCE(dc.nb_artwork_clicks, 0)             AS nb_artwork_clicks,
+    COALESCE(dc.nb_clicks_new, 0)                 AS nb_clicks_new,
+    COALESCE(dc.nb_clicks_returning, 0)           AS nb_clicks_returning,
+    COALESCE(sess.nb_sessions, 0)                 AS nb_sessions,
+    COALESCE(sess.nb_sessions_new, 0)             AS nb_sessions_new,
+    COALESCE(sess.nb_sessions_returning, 0)       AS nb_sessions_returning,
+    COALESCE(ds.units_sold, 0)                    AS units_sold,
+    COALESCE(ds.units_sold_new, 0)                AS units_sold_new,
+    COALESCE(ds.units_sold_returning, 0)          AS units_sold_returning,
+    COALESCE(ds.bv, 0)                            AS bv,
+    COALESCE(ds.bv_new, 0)                        AS bv_new,
+    COALESCE(ds.bv_returning, 0)                  AS bv_returning
   FROM promo_calendar pc
   LEFT JOIN daily_impressions di   ON di.event_date = pc.date
   LEFT JOIN daily_clicks      dc   ON dc.date        = pc.date
@@ -181,25 +248,55 @@ promo_summary AS (
     COUNTIF(discounted_impressions IS NOT NULL) AS days_with_disc_imp_data,
 
     -- Totals
-    SUM(total_impressions)      AS total_impressions,
-    SUM(discounted_impressions) AS discounted_impressions,
-    SUM(nb_artwork_clicks)      AS nb_artwork_clicks,
-    SUM(nb_sessions)            AS nb_sessions,
-    SUM(units_sold)             AS units_sold,
-    SUM(bv)                     AS bv,
+    SUM(total_impressions)              AS total_impressions,
+    SUM(total_impressions_new)          AS total_impressions_new,
+    SUM(total_impressions_returning)    AS total_impressions_returning,
+    SUM(discounted_impressions)         AS discounted_impressions,
+    SUM(discounted_impressions_new)     AS discounted_impressions_new,
+    SUM(discounted_impressions_returning) AS discounted_impressions_returning,
+    SUM(nb_artwork_clicks)              AS nb_artwork_clicks,
+    SUM(nb_clicks_new)                  AS nb_clicks_new,
+    SUM(nb_clicks_returning)            AS nb_clicks_returning,
+    SUM(nb_sessions)                    AS nb_sessions,
+    SUM(nb_sessions_new)                AS nb_sessions_new,
+    SUM(nb_sessions_returning)          AS nb_sessions_returning,
+    SUM(units_sold)                     AS units_sold,
+    SUM(units_sold_new)                 AS units_sold_new,
+    SUM(units_sold_returning)           AS units_sold_returning,
+    SUM(bv)                             AS bv,
+    SUM(bv_new)                         AS bv_new,
+    SUM(bv_returning)                   AS bv_returning,
 
     -- Per-day averages (key metric for cross-format comparison)
-    ROUND(SUM(total_impressions)  / promo_duration, 1) AS impressions_per_day,
-    ROUND(SAFE_DIVIDE(SUM(discounted_impressions), promo_duration), 1) AS disc_impressions_per_day,
-    ROUND(SUM(nb_artwork_clicks)  / promo_duration, 1) AS clicks_per_day,
-    ROUND(SUM(nb_sessions)        / promo_duration, 1) AS sessions_per_day,
-    ROUND(SUM(units_sold)         / promo_duration, 3) AS units_sold_per_day,
-    ROUND(SUM(bv)                 / promo_duration, 2) AS bv_per_day,
+    ROUND(SUM(total_impressions)            / promo_duration, 1) AS impressions_per_day,
+    ROUND(SUM(total_impressions_new)        / promo_duration, 1) AS impressions_new_per_day,
+    ROUND(SUM(total_impressions_returning)  / promo_duration, 1) AS impressions_returning_per_day,
+    ROUND(SAFE_DIVIDE(SUM(discounted_impressions),           promo_duration), 1) AS disc_impressions_per_day,
+    ROUND(SAFE_DIVIDE(SUM(discounted_impressions_new),       promo_duration), 1) AS disc_impressions_new_per_day,
+    ROUND(SAFE_DIVIDE(SUM(discounted_impressions_returning), promo_duration), 1) AS disc_impressions_returning_per_day,
+    ROUND(SUM(nb_artwork_clicks)            / promo_duration, 1) AS clicks_per_day,
+    ROUND(SUM(nb_clicks_new)                / promo_duration, 1) AS clicks_new_per_day,
+    ROUND(SUM(nb_clicks_returning)          / promo_duration, 1) AS clicks_returning_per_day,
+    ROUND(SUM(nb_sessions)                  / promo_duration, 1) AS sessions_per_day,
+    ROUND(SUM(nb_sessions_new)              / promo_duration, 1) AS sessions_new_per_day,
+    ROUND(SUM(nb_sessions_returning)        / promo_duration, 1) AS sessions_returning_per_day,
+    ROUND(SUM(units_sold)                   / promo_duration, 3) AS units_sold_per_day,
+    ROUND(SUM(units_sold_new)               / promo_duration, 3) AS units_new_per_day,
+    ROUND(SUM(units_sold_returning)         / promo_duration, 3) AS units_returning_per_day,
+    ROUND(SUM(bv)                           / promo_duration, 2) AS bv_per_day,
+    ROUND(SUM(bv_new)                       / promo_duration, 2) AS bv_new_per_day,
+    ROUND(SUM(bv_returning)                 / promo_duration, 2) AS bv_returning_per_day,
 
-    -- Conversion metrics
-    ROUND(SAFE_DIVIDE(SUM(units_sold), SUM(nb_sessions)), 6) AS conv_rate,
-    ROUND(SAFE_DIVIDE(SUM(bv), SUM(total_impressions)), 4)              AS bv_per_total_imp,
-    ROUND(SAFE_DIVIDE(SUM(bv), SUM(discounted_impressions)), 4)         AS bv_per_disc_imp
+    -- Buyer-type split (sessions and units)
+    ROUND(SAFE_DIVIDE(SUM(nb_sessions_returning),  SUM(nb_sessions))  * 100, 1) AS pct_sessions_returning,
+    ROUND(SAFE_DIVIDE(SUM(units_sold_returning),   SUM(units_sold))   * 100, 1) AS pct_returning,
+
+    -- Conversion metrics — each buyer type uses its own session denominator
+    ROUND(SAFE_DIVIDE(SUM(units_sold),          SUM(nb_sessions)),          6) AS conv_rate,
+    ROUND(SAFE_DIVIDE(SUM(units_sold_new),       SUM(nb_sessions_new)),      6) AS conv_rate_new,
+    ROUND(SAFE_DIVIDE(SUM(units_sold_returning), SUM(nb_sessions_returning)), 6) AS conv_rate_returning,
+    ROUND(SAFE_DIVIDE(SUM(bv), SUM(total_impressions)),          4) AS bv_per_total_imp,
+    ROUND(SAFE_DIVIDE(SUM(bv), SUM(discounted_impressions)),     4) AS bv_per_disc_imp
   FROM promo_daily_metrics
   WHERE is_promotion = 1
   GROUP BY promotion_name, promo_format, promo_start_date, promo_end_date, promo_duration
@@ -217,13 +314,27 @@ promo_decay_curve AS (
     promo_day_number,
     date,
     total_impressions,
+    total_impressions_new,
+    total_impressions_returning,
     discounted_impressions,
+    discounted_impressions_new,
+    discounted_impressions_returning,
     nb_artwork_clicks,
+    nb_clicks_new,
+    nb_clicks_returning,
     nb_sessions,
+    nb_sessions_new,
+    nb_sessions_returning,
     units_sold,
+    units_sold_new,
+    units_sold_returning,
     bv,
-    ROUND(SAFE_DIVIDE(units_sold, nb_sessions), 6) AS daily_conv_rate,
-    ROUND(SAFE_DIVIDE(bv, total_impressions), 4)              AS daily_bv_per_impression
+    bv_new,
+    bv_returning,
+    ROUND(SAFE_DIVIDE(units_sold,           nb_sessions),           6) AS daily_conv_rate,
+    ROUND(SAFE_DIVIDE(units_sold_new,        nb_sessions_new),       6) AS daily_conv_rate_new,
+    ROUND(SAFE_DIVIDE(units_sold_returning,  nb_sessions_returning),  6) AS daily_conv_rate_returning,
+    ROUND(SAFE_DIVIDE(bv, total_impressions), 4)                         AS daily_bv_per_impression
   FROM promo_daily_metrics
   WHERE is_promotion = 1
 ),
@@ -236,11 +347,21 @@ promo_baseline AS (
   SELECT
     DATE_TRUNC(date, MONTH)         AS month,
     COUNT(*)                         AS nb_baseline_days,
-    ROUND(AVG(total_impressions), 1) AS avg_daily_impressions,
-    ROUND(AVG(nb_artwork_clicks), 1) AS avg_daily_clicks,
-    ROUND(AVG(nb_sessions), 1)       AS avg_daily_sessions,
-    ROUND(AVG(units_sold), 3)        AS avg_daily_units_sold,
-    ROUND(AVG(bv), 2)                AS avg_daily_bv
+    ROUND(AVG(total_impressions), 1)           AS avg_daily_impressions,
+    ROUND(AVG(total_impressions_new), 1)       AS avg_daily_impressions_new,
+    ROUND(AVG(total_impressions_returning), 1) AS avg_daily_impressions_returning,
+    ROUND(AVG(nb_artwork_clicks), 1)           AS avg_daily_clicks,
+    ROUND(AVG(nb_clicks_new), 1)               AS avg_daily_clicks_new,
+    ROUND(AVG(nb_clicks_returning), 1)         AS avg_daily_clicks_returning,
+    ROUND(AVG(nb_sessions), 1)                 AS avg_daily_sessions,
+    ROUND(AVG(nb_sessions_new), 1)             AS avg_daily_sessions_new,
+    ROUND(AVG(nb_sessions_returning), 1)       AS avg_daily_sessions_returning,
+    ROUND(AVG(units_sold), 3)                  AS avg_daily_units_sold,
+    ROUND(AVG(units_sold_new), 3)              AS avg_daily_units_new,
+    ROUND(AVG(units_sold_returning), 3)        AS avg_daily_units_returning,
+    ROUND(AVG(bv), 2)                          AS avg_daily_bv,
+    ROUND(AVG(bv_new), 2)                      AS avg_daily_bv_new,
+    ROUND(AVG(bv_returning), 2)                AS avg_daily_bv_returning
   FROM promo_daily_metrics
   WHERE is_promotion = 0
   GROUP BY 1
@@ -257,14 +378,26 @@ promo_format_summary AS (
     COUNT(*) AS n_promos,
 
     -- Mean (per-day normalised)
-    ROUND(AVG(impressions_per_day),      1) AS mean_impressions_per_day,
-    ROUND(AVG(disc_impressions_per_day), 1) AS mean_disc_impressions_per_day,
-    ROUND(AVG(clicks_per_day),           1) AS mean_clicks_per_day,
-    ROUND(AVG(sessions_per_day),         1) AS mean_sessions_per_day,
-    ROUND(AVG(units_sold_per_day),       3) AS mean_units_sold_per_day,
-    ROUND(AVG(bv_per_day),               2) AS mean_bv_per_day,
+    ROUND(AVG(impressions_per_day),              1) AS mean_impressions_per_day,
+    ROUND(AVG(impressions_new_per_day),          1) AS mean_impressions_new_per_day,
+    ROUND(AVG(impressions_returning_per_day),    1) AS mean_impressions_returning_per_day,
+    ROUND(AVG(disc_impressions_per_day),         1) AS mean_disc_impressions_per_day,
+    ROUND(AVG(disc_impressions_new_per_day),     1) AS mean_disc_impressions_new_per_day,
+    ROUND(AVG(disc_impressions_returning_per_day), 1) AS mean_disc_impressions_returning_per_day,
+    ROUND(AVG(clicks_per_day),                   1) AS mean_clicks_per_day,
+    ROUND(AVG(clicks_new_per_day),               1) AS mean_clicks_new_per_day,
+    ROUND(AVG(clicks_returning_per_day),         1) AS mean_clicks_returning_per_day,
+    ROUND(AVG(sessions_per_day),                 1) AS mean_sessions_per_day,
+    ROUND(AVG(sessions_new_per_day),             1) AS mean_sessions_new_per_day,
+    ROUND(AVG(sessions_returning_per_day),       1) AS mean_sessions_returning_per_day,
+    ROUND(AVG(units_sold_per_day),               3) AS mean_units_sold_per_day,
+    ROUND(AVG(units_new_per_day),                3) AS mean_units_new_per_day,
+    ROUND(AVG(units_returning_per_day),          3) AS mean_units_returning_per_day,
+    ROUND(AVG(bv_per_day),                       2) AS mean_bv_per_day,
+    ROUND(AVG(bv_new_per_day),                   2) AS mean_bv_new_per_day,
+    ROUND(AVG(bv_returning_per_day),             2) AS mean_bv_returning_per_day,
 
-    -- Median (per-day normalised)
+    -- Median (per-day normalised — total only, for conciseness)
     ROUND(APPROX_QUANTILES(impressions_per_day,      2)[OFFSET(1)], 1) AS median_impressions_per_day,
     ROUND(APPROX_QUANTILES(disc_impressions_per_day, 2)[OFFSET(1)], 1) AS median_disc_impressions_per_day,
     ROUND(APPROX_QUANTILES(clicks_per_day,           2)[OFFSET(1)], 1) AS median_clicks_per_day,
@@ -272,10 +405,14 @@ promo_format_summary AS (
     ROUND(APPROX_QUANTILES(units_sold_per_day,       2)[OFFSET(1)], 3) AS median_units_sold_per_day,
     ROUND(APPROX_QUANTILES(bv_per_day,               2)[OFFSET(1)], 2) AS median_bv_per_day,
 
-    -- Conversion metrics (averaged across promos that have the data)
-    ROUND(AVG(conv_rate),         6) AS mean_conv_rate,
-    ROUND(AVG(bv_per_total_imp),  4) AS mean_bv_per_total_imp,
-    ROUND(AVG(bv_per_disc_imp),   4) AS mean_bv_per_disc_imp,
+    -- Conversion metrics
+    ROUND(AVG(conv_rate),              6) AS mean_conv_rate,
+    ROUND(AVG(conv_rate_new),          6) AS mean_conv_rate_new,
+    ROUND(AVG(conv_rate_returning),    6) AS mean_conv_rate_returning,
+    ROUND(AVG(pct_sessions_returning), 1) AS mean_pct_sessions_returning,
+    ROUND(AVG(pct_returning),          1) AS mean_pct_units_returning,
+    ROUND(AVG(bv_per_total_imp),       4) AS mean_bv_per_total_imp,
+    ROUND(AVG(bv_per_disc_imp),        4) AS mean_bv_per_disc_imp,
 
     -- Seasonality: months in which this format ran
     STRING_AGG(
