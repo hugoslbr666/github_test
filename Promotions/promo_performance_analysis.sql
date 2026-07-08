@@ -225,7 +225,10 @@ promo_daily_metrics AS (
     COALESCE(ds.units_sold_returning, 0)          AS units_sold_returning,
     COALESCE(ds.bv, 0)                            AS bv,
     COALESCE(ds.bv_new, 0)                        AS bv_new,
-    COALESCE(ds.bv_returning, 0)                  AS bv_returning
+    COALESCE(ds.bv_returning, 0)                  AS bv_returning,
+    ROUND(SAFE_DIVIDE(COALESCE(ds.bv, 0),          COALESCE(ds.units_sold, 0)),          2) AS aov,
+    ROUND(SAFE_DIVIDE(COALESCE(ds.bv_new, 0),      COALESCE(ds.units_sold_new, 0)),      2) AS aov_new,
+    ROUND(SAFE_DIVIDE(COALESCE(ds.bv_returning, 0), COALESCE(ds.units_sold_returning, 0)), 2) AS aov_returning
   FROM promo_calendar pc
   LEFT JOIN daily_impressions di   ON di.event_date = pc.date
   LEFT JOIN daily_clicks      dc   ON dc.date        = pc.date
@@ -291,6 +294,11 @@ promo_summary AS (
     ROUND(SAFE_DIVIDE(SUM(nb_sessions_returning),  SUM(nb_sessions))  * 100, 1) AS pct_sessions_returning,
     ROUND(SAFE_DIVIDE(SUM(units_sold_returning),   SUM(units_sold))   * 100, 1) AS pct_returning,
 
+    -- Average order value (BV / units, computed on summed totals to avoid ratio-of-averages bias)
+    ROUND(SAFE_DIVIDE(SUM(bv),          SUM(units_sold)),          2) AS aov,
+    ROUND(SAFE_DIVIDE(SUM(bv_new),       SUM(units_sold_new)),      2) AS aov_new,
+    ROUND(SAFE_DIVIDE(SUM(bv_returning), SUM(units_sold_returning)), 2) AS aov_returning,
+
     -- Conversion metrics — each buyer type uses its own session denominator
     ROUND(SAFE_DIVIDE(SUM(units_sold),          SUM(nb_sessions)),          6) AS conv_rate,
     ROUND(SAFE_DIVIDE(SUM(units_sold_new),       SUM(nb_sessions_new)),      6) AS conv_rate_new,
@@ -331,6 +339,9 @@ promo_decay_curve AS (
     bv,
     bv_new,
     bv_returning,
+    ROUND(SAFE_DIVIDE(bv,          units_sold),          2) AS daily_aov,
+    ROUND(SAFE_DIVIDE(bv_new,       units_sold_new),      2) AS daily_aov_new,
+    ROUND(SAFE_DIVIDE(bv_returning, units_sold_returning), 2) AS daily_aov_returning,
     ROUND(SAFE_DIVIDE(units_sold,           nb_sessions),           6) AS daily_conv_rate,
     ROUND(SAFE_DIVIDE(units_sold_new,        nb_sessions_new),       6) AS daily_conv_rate_new,
     ROUND(SAFE_DIVIDE(units_sold_returning,  nb_sessions_returning),  6) AS daily_conv_rate_returning,
@@ -361,7 +372,10 @@ promo_baseline AS (
     ROUND(AVG(units_sold_returning), 3)        AS avg_daily_units_returning,
     ROUND(AVG(bv), 2)                          AS avg_daily_bv,
     ROUND(AVG(bv_new), 2)                      AS avg_daily_bv_new,
-    ROUND(AVG(bv_returning), 2)                AS avg_daily_bv_returning
+    ROUND(AVG(bv_returning), 2)                AS avg_daily_bv_returning,
+    ROUND(SAFE_DIVIDE(AVG(bv), AVG(units_sold)), 2)                   AS avg_daily_aov,
+    ROUND(SAFE_DIVIDE(AVG(bv_new), AVG(units_sold_new)), 2)           AS avg_daily_aov_new,
+    ROUND(SAFE_DIVIDE(AVG(bv_returning), AVG(units_sold_returning)), 2) AS avg_daily_aov_returning
   FROM promo_daily_metrics
   WHERE is_promotion = 0
   GROUP BY 1
@@ -404,6 +418,12 @@ promo_format_summary AS (
     ROUND(APPROX_QUANTILES(sessions_per_day,         2)[OFFSET(1)], 1) AS median_sessions_per_day,
     ROUND(APPROX_QUANTILES(units_sold_per_day,       2)[OFFSET(1)], 3) AS median_units_sold_per_day,
     ROUND(APPROX_QUANTILES(bv_per_day,               2)[OFFSET(1)], 2) AS median_bv_per_day,
+    ROUND(APPROX_QUANTILES(aov,                      2)[OFFSET(1)], 2) AS median_aov,
+
+    -- Average order value
+    ROUND(AVG(aov),           2) AS mean_aov,
+    ROUND(AVG(aov_new),       2) AS mean_aov_new,
+    ROUND(AVG(aov_returning), 2) AS mean_aov_returning,
 
     -- Conversion metrics
     ROUND(AVG(conv_rate),              6) AS mean_conv_rate,
