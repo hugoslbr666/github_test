@@ -38,6 +38,7 @@ else 'post_free_shipping_fees_for_local_sales'
 end as tag,
 s.country_shipment_from as country_tag,
 case when coalesce(p.is_promotion, 0) = 1 then 'on_promotion' else 'not_on_promotion' end as promo_tag,
+paid_at,
 s.sale_id,
 s.amount_eur_paid
 from all_sales s
