@@ -1,0 +1,91 @@
+<h2 class="sr-only">Three charts comparing the free-shipping policy's impact across the 10 countries with reliable sales volume: monthly sales pace lift, view-to-purchase conversion rate before vs after, and average order value percent change.</h2>
+
+<div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Monthly sales pace, post vs pre policy (10 countries with reliable volume)</div>
+<div style="position: relative; width: 100%; height: 360px; margin-bottom: 2rem;">
+  <canvas id="liftChart" role="img" aria-label="Horizontal bar chart of monthly sales pace lift by country. Germany 3.7x, US 2.7x, France 2.8x, Italy 4.8x, Spain 7.6x, Switzerland 18.9x, UK 2.4x, Netherlands 2.1x, Belgium 3.9x, Japan 2.0x.">Monthly sales lift by country: DE 3.7x, US 2.7x, FR 2.8x, IT 4.8x, ES 7.6x, CH 18.9x, GB 2.4x, NL 2.1x, BE 3.9x, JP 2.0x</canvas>
+</div>
+
+<div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">View-to-purchase rate, per 100k views, pre vs post</div>
+<div style="display: flex; gap: 16px; margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#b5d4f4;"></span>Pre</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#185fa5;"></span>Post</span>
+</div>
+<div style="position: relative; width: 100%; height: 300px; margin-bottom: 2rem;">
+  <canvas id="cvrChart" role="img" aria-label="Grouped bar chart of view-to-purchase rate per 100k views, pre versus post free shipping policy, for 10 countries.">View to purchase rate per 100k views: DE 0.19 to 0.60, US 0.22 to 0.61, FR 0.09 to 0.26, IT 0.12 to 0.40, ES 0.05 to 0.30, CH 0.05 to 0.73, GB 0.11 to 0.50, NL 0.19 to 0.43, BE 0.12 to 0.46, JP 0.23 to 0.41</canvas>
+</div>
+
+<div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Average order value change, post vs pre policy</div>
+<div style="position: relative; width: 100%; height: 360px;">
+  <canvas id="aovChart" role="img" aria-label="Diverging horizontal bar chart of average order value percent change by country. Most countries show a decline between 13 and 48 percent, while Spain shows plus 29 percent and UK shows plus 39 percent.">AOV change by country: DE -48%, US -13%, FR -40%, IT -27%, ES +29%, CH -27%, GB +39%, NL -21%, BE -22%, JP -42%</canvas>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const countries = ['DE','US','FR','IT','ES','CH','GB','NL','BE','JP'];
+const lift = [3.71,2.67,2.77,4.82,7.62,18.91,2.36,2.10,3.94,1.97];
+const vPre = [0.191,0.224,0.094,0.122,0.046,0.054,0.111,0.187,0.124,0.233];
+const vPost = [0.597,0.615,0.256,0.398,0.304,0.728,0.496,0.426,0.457,0.413];
+const aov = [-47.9,-12.7,-40.4,-26.8,29.2,-27.4,39.4,-20.9,-22.3,-42.0];
+
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const textMuted = isDark ? '#898781' : '#898781';
+const gridColor = isDark ? '#2c2c2a' : '#e1e0d9';
+
+new Chart(document.getElementById('liftChart'), {
+  type: 'bar',
+  data: { labels: countries, datasets: [{ data: lift, backgroundColor: '#378ADD', borderRadius: 4, barThickness: 22 }] },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.parsed.x.toFixed(1) + 'x' } } },
+    scales: {
+      x: { title: { display: true, text: 'Lift (multiple)', color: textMuted }, grid: { color: gridColor }, ticks: { color: textMuted, callback: (v) => v + 'x' } },
+      y: { grid: { display: false }, ticks: { color: textMuted } }
+    }
+  }
+});
+
+new Chart(document.getElementById('cvrChart'), {
+  type: 'bar',
+  data: {
+    labels: countries,
+    datasets: [
+      { label: 'Pre', data: vPre, backgroundColor: '#b5d4f4', borderRadius: 4 },
+      { label: 'Post', data: vPost, backgroundColor: '#185fa5', borderRadius: 4 }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + ' per 100k views' } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: textMuted } },
+      y: { title: { display: true, text: 'Sales per 100k views', color: textMuted }, grid: { color: gridColor }, ticks: { color: textMuted } }
+    }
+  }
+});
+
+new Chart(document.getElementById('aovChart'), {
+  type: 'bar',
+  data: {
+    labels: countries,
+    datasets: [{
+      data: aov,
+      backgroundColor: aov.map(v => v >= 0 ? '#378ADD' : '#E24B4A'),
+      borderRadius: 4,
+      barThickness: 22
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => (ctx.parsed.x >= 0 ? '+' : '') + ctx.parsed.x.toFixed(1) + '%' } } },
+    scales: {
+      x: { title: { display: true, text: 'AOV change', color: textMuted }, grid: { color: gridColor }, ticks: { color: textMuted, callback: (v) => (v >= 0 ? '+' : '') + v + '%' } },
+      y: { grid: { display: false }, ticks: { color: textMuted } }
+    }
+  }
+});
+</script>
